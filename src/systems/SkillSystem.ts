@@ -47,7 +47,7 @@ export function useSkill(
     return false;
   }
   player.mp -= skill.mpCost;
-  cd.trigger(skill.cooldown);
+  cd.trigger(skill.cooldown * (1 - player.stats.cooldownReduction / 100));
   (SKILL_HANDLERS[skill.id] ?? defaultHandler)({ scene, player, skill, toast });
   return true;
 }

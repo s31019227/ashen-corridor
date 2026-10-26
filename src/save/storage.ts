@@ -1,8 +1,8 @@
-import { RUN_STATE_VERSION, type RunState } from '../core/runState';
+import { migrateRun, type RunState } from '../core/runState';
 import { GAME_CONFIG } from '../config/game';
 import type { Locale } from '../i18n';
 
-// localStorage 存檔。資料帶 version，格式改變時可在 migrate() 中轉換。
+// localStorage 存檔。資料帶 version，格式改變時在 core/runState.ts 的 migrateRun() 中轉換。
 // 局外成長之後另開一個 key（例如 'ashen.meta'），不和單局存檔混在一起。
 
 const RUN_KEY = 'ashen.run';
@@ -35,14 +35,9 @@ function write(key: string, value: unknown) {
   }
 }
 
-function migrate(data: RunState): RunState | null {
-  if (data.version === RUN_STATE_VERSION) return data;
-  return null;
-}
-
 export function loadRun(): RunState | null {
   const data = read<RunState>(RUN_KEY);
-  return data ? migrate(data) : null;
+  return data ? migrateRun(data) : null;
 }
 
 export function saveRun(run: RunState) {

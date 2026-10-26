@@ -40,6 +40,8 @@ export interface MapCell {
   visited: boolean;
   /** 商店格的商品清單（商品 id） */
   shopStock?: string[];
+  /** 祭壇格的契約效果 id */
+  altarEffect?: string;
 }
 
 export interface FloorMap {
@@ -68,13 +70,14 @@ export type AttackStyle = 'melee' | 'ranged' | 'hybrid';
 
 export type EquipSlot = 'weapon' | 'helmet' | 'chest' | 'legs' | 'boots' | 'ring';
 
+/** 防具類型：重甲（坦）、輕甲（敏捷）、布甲（法系） */
+export type ArmorType = 'heavy' | 'light' | 'cloth';
+
 export const EQUIP_SLOTS: readonly EquipSlot[] = ['weapon', 'helmet', 'chest', 'legs', 'boots', 'ring'];
 
 export type PotionId = 'hp' | 'mp' | 'hpMajor' | 'mpMajor' | 'balanced';
 
 export const POTION_IDS: readonly PotionId[] = ['hp', 'mp', 'hpMajor', 'mpMajor', 'balanced'];
-
-export const POTION_SLOT_COUNT = 5;
 
 export interface Stats {
   maxHp: number;
@@ -82,6 +85,16 @@ export interface Stats {
   atk: number;
   def: number;
   moveSpeed: number;
+  /** 攻擊速度加成（%），普攻間隔 ÷ (1 + 值/100) */
+  attackSpeed: number;
+  /** 普攻射程加成（像素） */
+  attackRange: number;
+  /** 爆擊率（%） */
+  critChance: number;
+  /** 每秒魔力回復（最大魔力的 %） */
+  mpRegen: number;
+  /** 技能冷卻縮減（%） */
+  cooldownReduction: number;
 }
 
 export type StatKey = keyof Stats;

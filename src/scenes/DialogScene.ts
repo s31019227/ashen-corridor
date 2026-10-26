@@ -31,13 +31,19 @@ export class DialogScene extends Phaser.Scene {
     const { width, height } = GAME_CONFIG;
     const d = this.data_;
     addBackdrop(this, 0.6, () => this.close(false));
-    addPanel(this, width / 2, height / 2, 560, 240);
-    addText(this, width / 2, height / 2 - 40, d.message, 20, THEME.text, {
+    // 面板高度依文字行數調整
+    const text = addText(this, width / 2, 0, d.message, 20, THEME.text, {
       align: 'center',
-      wordWrap: { width: 480 },
-    }).setOrigin(0.5);
-    new Button(this, width / 2 - 110, height / 2 + 60, d.cancelText, () => this.close(false), { width: 180 });
-    new Button(this, width / 2 + 110, height / 2 + 60, d.confirmText, () => this.close(true), {
+      lineSpacing: 10,
+      wordWrap: { width: 520 },
+    }).setOrigin(0.5, 0);
+    const panelH = text.height + 150;
+    const top = height / 2 - panelH / 2;
+    addPanel(this, width / 2, height / 2, 600, panelH);
+    text.setY(top + 40).setDepth(1);
+    const btnY = top + panelH - 50;
+    new Button(this, width / 2 - 110, btnY, d.cancelText, () => this.close(false), { width: 180 });
+    new Button(this, width / 2 + 110, btnY, d.confirmText, () => this.close(true), {
       width: 180,
       color: THEME.accent,
     });

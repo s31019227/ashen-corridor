@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { floatText } from '../ui/text';
 import type Phaser from 'phaser';
 
-/** 使用藥水欄第 slot 格（0–4）的藥水。無限使用，每種藥水各自冷卻。 */
+/** 使用藥水欄第 slot 格的藥水。無限使用，藥水欄共用冷卻。 */
 export function usePotion(
   scene: Phaser.Scene,
   run: RunState,
@@ -20,7 +20,7 @@ export function usePotion(
     return false;
   }
   const def = POTIONS[potionId];
-  const cd = player.potionCds[potionId];
+  const cd = player.potionCds[slot];
   if (!cd.ready) {
     toast(t('msg.onCooldown'), THEME.textDim);
     return false;

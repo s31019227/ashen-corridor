@@ -31,8 +31,6 @@ export const GAME_CONFIG = {
   combat: {
     /** 自動普攻預設開關（玩家可在設定中更改） */
     autoAttackDefault: true,
-    /** 每秒魔力回復（最大魔力百分比） */
-    mpRegenPercentPerSec: 1,
     /** 受擊後無敵時間（秒），避免多個敵人同一幀疊傷 */
     playerHitInvulnSec: 0.25,
     projectileSpeed: 720,

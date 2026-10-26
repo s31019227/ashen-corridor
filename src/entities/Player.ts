@@ -7,7 +7,7 @@ import { Cooldown } from '../core/cooldown';
 import type { RoomBounds } from '../core/roomTransition';
 import type { RunState } from '../core/runState';
 import { computeStats } from '../core/stats';
-import { POTION_IDS, type PotionId, type Stats, type Vec2 } from '../core/types';
+import type { Stats, Vec2 } from '../core/types';
 import { floatText } from '../ui/text';
 
 export class Player {
@@ -26,7 +26,8 @@ export class Player {
   readonly attackCd: Cooldown;
   /** 0–2：小技能，3：大招 */
   readonly skillCds: Cooldown[];
-  readonly potionCds: Record<PotionId, Cooldown>;
+  /** 藥水欄冷卻（每格一個，換藥水不會重置） */
+  readonly potionCds: Cooldown[];
 
   /** 玩家點擊鎖定的敵人 */
   lockedId: number | null = null;
@@ -45,22 +46,33 @@ export class Player {
     this.classDef = CLASSES[run.classId];
     this.x = x;
     this.y = y;
-    this.stats = computeStats(run.classId, run.equipment);
+    this.stats = computeStats(run.classId, run.equipment, run.altarEffects);
     this.hp = Math.min(run.hp, this.stats.maxHp);
     this.mp = Math.min(run.mp, this.stats.maxMp);
 
     this.attackCd = new Cooldown(this.classDef.attackInterval);
     this.skillCds = [...this.classDef.skills, this.classDef.ultimate].map((s) => new Cooldown(s.cooldown));
-    this.potionCds = Object.fromEntries(POTION_IDS.map((id) => [id, new Cooldown(0)])) as Record<PotionId, Cooldown>;
+    this.potionCds = run.potions.map(() => new Cooldown(0));
 
     this.body = scene.add.circle(0, 0, this.radius, this.classDef.color).setStrokeStyle(2, 0xe8e0c8);
-    const facingMark = scene.add.triangle(this.radius + 6, 0, 0, -6, 0, 6, 10, 0, 0xe8e0c8);
+    // Triangle 的頂點座標以左上角為原點，要用非負座標才會以 (x, y) 為中心
+    const facingMark = scene.add.triangle(this.radius + 6, 0, 0, 0, 0, 12, 10, 6, 0xe8e0c8);
     this.view = scene.add.container(x, y, [this.body, facingMark]).setDepth(10);
+  }
+
+  /** 普攻間隔（秒），受攻速加成影響 */
+  get attackInterval() {
+    return this.classDef.attackInterval / (1 + this.stats.attackSpeed / 100);
+  }
+
+  /** 普攻射程（像素），職業射程 + 裝備加成 */
+  get attackRange() {
+    return this.classDef.attackRange + this.stats.attackRange;
   }
 
   /** 裝備變更後重新計算數值 */
   refreshStats() {
-    this.stats = computeStats(this.run.classId, this.run.equipment);
+    this.stats = computeStats(this.run.classId, this.run.equipment, this.run.altarEffects);
     this.hp = Math.min(this.hp, this.stats.maxHp);
     this.mp = Math.min(this.mp, this.stats.maxMp);
   }
@@ -82,9 +94,9 @@ export class Player {
   update(dt: number) {
     this.attackCd.tick(dt);
     for (const cd of this.skillCds) cd.tick(dt);
-    for (const cd of Object.values(this.potionCds)) cd.tick(dt);
+    for (const cd of this.potionCds) cd.tick(dt);
     if (this.invuln > 0) this.invuln -= dt;
-    const regen = (this.stats.maxMp * GAME_CONFIG.combat.mpRegenPercentPerSec * dt) / 100;
+    const regen = (this.stats.maxMp * this.stats.mpRegen * dt) / 100;
     this.mp = Math.min(this.stats.maxMp, this.mp + regen);
 
     this.view.setPosition(this.x, this.y);
@@ -112,13 +124,13 @@ export class Player {
   exportCooldowns(): Record<string, number> {
     const out: Record<string, number> = { attack: this.attackCd.remaining };
     this.skillCds.forEach((cd, i) => (out[`skill${i}`] = cd.remaining));
-    for (const id of POTION_IDS) out[`potion:${id}`] = this.potionCds[id].remaining;
+    this.potionCds.forEach((cd, i) => (out[`potion${i}`] = cd.remaining));
     return out;
   }
 
   importCooldowns(data: Record<string, number>) {
     this.attackCd.remaining = data.attack ?? 0;
     this.skillCds.forEach((cd, i) => (cd.remaining = data[`skill${i}`] ?? 0));
-    for (const id of POTION_IDS) this.potionCds[id].remaining = data[`potion:${id}`] ?? 0;
+    this.potionCds.forEach((cd, i) => (cd.remaining = data[`potion${i}`] ?? 0));
   }
 }

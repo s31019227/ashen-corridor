@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { EnemyDef } from '../config/enemies';
 import { THEME } from '../config/theme';
 import { Cooldown } from '../core/cooldown';
+import type { DifficultyScale } from '../core/difficulty';
 import type { Vec2 } from '../core/types';
 
 export class Enemy {
@@ -11,6 +12,11 @@ export class Enemy {
   private hpWidth: number;
 
   hp: number;
+  /** 依難度調整後的數值 */
+  readonly maxHp: number;
+  readonly atk: number;
+  /** 技能傷害倍率（難度） */
+  readonly damageMult: number;
   alive = true;
   readonly attackCd: Cooldown;
   readonly skillCds: Cooldown[];
@@ -26,8 +32,12 @@ export class Enemy {
     readonly def: EnemyDef,
     public x: number,
     public y: number,
+    scale: DifficultyScale = { hp: 1, atk: 1, gold: 1 },
   ) {
-    this.hp = def.maxHp;
+    this.maxHp = Math.round(def.maxHp * scale.hp);
+    this.atk = Math.round(def.atk * scale.atk);
+    this.damageMult = scale.atk;
+    this.hp = this.maxHp;
     this.attackCd = new Cooldown(def.attackInterval);
     this.attackCd.trigger(def.attackInterval * 0.5);
     // 技能冷卻從部分開始，避免一進格子就同時放技能
@@ -83,7 +93,7 @@ export class Enemy {
 
   sync() {
     this.view.setPosition(this.x, this.y);
-    this.hpFill.width = this.hpWidth * (this.hp / this.def.maxHp);
+    this.hpFill.width = this.hpWidth * (this.hp / this.maxHp);
   }
 
   destroy() {

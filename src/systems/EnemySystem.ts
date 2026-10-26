@@ -80,7 +80,7 @@ export class EnemySystem {
     // 接觸攻擊
     if (gap <= e.def.attackRange + 2 && e.attackCd.ready) {
       e.attackCd.trigger();
-      p.takeDamage(calcDamage(e.def.atk, p.stats.def));
+      p.takeDamage(calcDamage(e.atk, p.stats.def));
     }
   }
 
@@ -96,7 +96,7 @@ export class EnemySystem {
       length: skill.length,
       angle,
       warnTime: skill.warnTime,
-      damage: skill.damage,
+      damage: Math.round(skill.damage * e.damageMult),
     });
     this.telegraphs.push(tg);
     // 以自身為起點的技能：施放期間站著不動，給玩家躲避的機會

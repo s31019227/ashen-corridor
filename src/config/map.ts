@@ -20,12 +20,6 @@ export const MAP_CONFIG = {
 };
 
 export const ROOM_EVENT_CONFIG = {
-  altar: {
-    /** 祭壇使用費用 */
-    cost: 30,
-    /** 隨機回復最大血量或魔力的百分比 */
-    restorePercent: 60,
-  },
   treasure: {
     goldMin: 30,
     goldMax: 70,

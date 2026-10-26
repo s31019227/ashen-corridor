@@ -12,6 +12,7 @@ export class Projectile {
     readonly targetId: number,
     readonly damage: number,
     readonly knockback: number,
+    readonly crit: boolean,
     readonly speed: number,
     color: number,
   ) {

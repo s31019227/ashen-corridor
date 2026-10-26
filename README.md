@@ -23,8 +23,8 @@ npm run i18n:sync  # 依 zh-TW.ts 同步 en.ts 的 key
 | --- | --- | --- |
 | 移動 | WASD / 方向鍵 | 左下虛擬搖桿 |
 | 小技能 / 大招 | Q E R / F | 右下按鈕 |
-| 藥水 1–5 | 1–5 | 下方藥水欄 |
-| 手動攻擊 | Space | 攻擊按鈕 |
+| 藥水（一次只能帶一種） | 1 | 技能按鈕左側的藥水格 |
+| 切換自動普攻（開＝自動普攻，關＝不普攻） | Space | 自動普攻按鈕 |
 | 鎖定 / 解除 | 點擊敵人 / ESC 或點空地 | 點擊敵人 / 點空地或解除按鈕 |
 | 裝備、地圖、暫停 | C、M、P | 右上按鈕、點小地圖 |
 
@@ -47,7 +47,7 @@ tests/      core 單元測試
 ## 擴充點
 
 - **技能效果**：在 `src/systems/SkillSystem.ts` 的 `SKILL_HANDLERS` 以技能 id 註冊 handler。
-- **裝備屬性生效**：`src/config/player.ts` 的 `applyEquipmentStats` 改為 `true`。
+- **裝備**：`src/config/equipment.ts`，武器限定職業，防具分重甲/輕甲/布甲。
 - **多人換格**：`core/roomTransition.ts` 的 `canTransition()` 已接受玩家陣列，規則為所有玩家都靠近同一邊。
 - **多層地圖**：`generateFloor({ floor, seed })` 已參數化，`RunState.floor` 已存在。
 - **英文**：填 `src/i18n/en.ts`，並把 `'en'` 加入 `AVAILABLE_LOCALES`。

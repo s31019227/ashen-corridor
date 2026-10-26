@@ -4,8 +4,11 @@ import { calcDamage } from '../src/core/damage';
 import { canTransition } from '../src/core/roomTransition';
 import { selectTarget, type TargetCandidate } from '../src/core/targeting';
 import { Cooldown } from '../src/core/cooldown';
-import { createRun } from '../src/core/runState';
-import { buyItem } from '../src/core/inventory';
+import { createRun, migrateRun } from '../src/core/runState';
+import { computeStats } from '../src/core/stats';
+import { buyItem, carryPotion } from '../src/core/inventory';
+import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
+import { CLASSES } from '../src/config/classes';
 import { MAP_CONFIG } from '../src/config/map';
 
 describe('mapGen', () => {
@@ -98,15 +101,92 @@ describe('cooldown', () => {
 });
 
 describe('inventory', () => {
-  it('buys equipment and potions', () => {
+  it('weapons are class-locked, armor is not', () => {
     const run = createRun('warrior', 1);
-    run.gold = 100;
-    expect(buyItem(run, 'rusted_blade')).toBe('ok');
-    expect(run.equipment.weapon).toBe('rusted_blade');
-    expect(buyItem(run, 'rusted_blade')).toBe('owned');
-    expect(buyItem(run, 'potion:mp')).toBe('ok');
-    expect(run.potions).toContain('mp');
+    run.gold = 1000;
+    expect(buyItem(run, 'ember_wand')).toBe('wrongClass');
+    expect(buyItem(run, 'iron_greatsword')).toBe('ok');
+    expect(run.equipment.weapon).toBe('iron_greatsword');
+    expect(buyItem(run, 'iron_greatsword')).toBe('owned');
+    expect(buyItem(run, 'linen_helmet')).toBe('ok');
     run.gold = 0;
-    expect(buyItem(run, 'iron_cap')).toBe('noGold');
+    expect(buyItem(run, 'ironguard_chest')).toBe('noGold');
+  });
+
+  it('starts without potions; buying unlocks, carrying swaps for free', () => {
+    const run = createRun('mage', 1);
+    expect(run.potions).toEqual([null]);
+    run.gold = 1000;
+    expect(buyItem(run, 'potion:mp')).toBe('ok');
+    expect(run.potions).toEqual(['mp']);
+    expect(buyItem(run, 'potion:hp')).toBe('ok');
+    expect(run.potions).toEqual(['hp']);
+    const gold = run.gold;
+    expect(carryPotion(run, 'mp')).toBe(true);
+    expect(run.potions).toEqual(['mp']);
+    expect(run.gold).toBe(gold);
+    expect(carryPotion(run, 'balanced')).toBe(false); // 未解鎖
+    expect(buyItem(run, 'potion:mp')).toBe('owned');
+  });
+});
+
+describe('shops', () => {
+  it('every shop has random equipment and some potions', () => {
+    const stocks = new Set<string>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const map = generateFloor({ floor: 1, seed });
+      const shops = map.cells.filter((c) => c.type === 'shop' || c.type === 'start');
+      expect(shops.length).toBe(MAP_CONFIG.counts.shop);
+      for (const c of shops) {
+        expect(c.shopStock!.some((id) => id.startsWith('potion:'))).toBe(true);
+        expect(c.shopStock!.some((id) => !id.startsWith('potion:'))).toBe(true);
+      }
+      stocks.add(map.cells[map.startId].shopStock!.join());
+    }
+    expect(stocks.size).toBeGreaterThan(20); // 起始商店不是固定商品
+  });
+});
+
+describe('difficulty', () => {
+  it('rises only with newly explored rooms', () => {
+    const map = generateFloor({ floor: 1, seed: 9 });
+    expect(difficultyLevel(map)).toBe(0);
+    map.cells[1].visited = true;
+    map.cells[2].visited = true;
+    expect(difficultyLevel(map)).toBe(2);
+    map.cells[1].visited = true; // 重複探索
+    expect(difficultyLevel(map)).toBe(2);
+    expect(difficultyScale(10).hp).toBeCloseTo(1.4);
+  });
+});
+
+describe('assassin', () => {
+  it('melee hits harder than thrown daggers', () => {
+    expect(CLASSES.assassin.meleeDamageMult).toBe(1.3);
+    expect(CLASSES.assassin.rangedDamageMult).toBe(0.9);
+  });
+});
+
+describe('altar effects', () => {
+  it('every altar room gets an effect', () => {
+    const map = generateFloor({ floor: 1, seed: 11 });
+    for (const c of map.cells.filter((c) => c.type === 'altar')) expect(c.altarEffect).toBeTruthy();
+  });
+  it('modify computed stats', () => {
+    const run = createRun('warrior', 3);
+    const base = computeStats('warrior', run.equipment);
+    const blessed = computeStats('warrior', run.equipment, ['bloodpact']);
+    expect(blessed.atk).toBe(Math.round(base.atk * 1.2));
+    expect(blessed.maxHp).toBe(Math.round(base.maxHp * 0.85));
+    const iron = computeStats('warrior', run.equipment, ['ironoath']);
+    expect(iron.def).toBe(base.def + 3);
+  });
+});
+
+describe('save migration', () => {
+  it('drops saves from older versions', () => {
+    const run = createRun('mage', 5);
+    expect(migrateRun(run)).toBe(run);
+    expect(migrateRun({ ...run, version: 2 })).toBeNull();
   });
 });

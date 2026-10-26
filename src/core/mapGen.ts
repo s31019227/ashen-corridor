@@ -1,7 +1,9 @@
+import { ALTAR_EFFECTS } from '../config/altar';
 import { MAP_CONFIG } from '../config/map';
-import { SHOP_CONFIG } from '../config/shop';
+import { EQUIPMENT } from '../config/equipment';
+import { SHOP_CONFIG, potionItemId } from '../config/shop';
 import { Rng } from './rng';
-import { DIRS, DIR_DELTA, type Dir, type FloorMap, type MapCell, type RoomType } from './types';
+import { DIRS, DIR_DELTA, POTION_IDS, type Dir, type FloorMap, type MapCell, type RoomType } from './types';
 
 export interface MapGenOptions {
   floor: number;
@@ -78,9 +80,11 @@ function growShape(rng: Rng, width: number, height: number, total: number): { x:
   return chosen;
 }
 
-function rollShopStock(rng: Rng): string[] {
-  const pool = rng.shuffle([...SHOP_CONFIG.generalEquipmentPool]);
-  return [...pool.slice(0, SHOP_CONFIG.generalEquipmentCount), ...SHOP_CONFIG.generalPotions];
+/** 隨機商品：裝備與藥水各自抽取，不保證有自己職業的武器 */
+function rollShopStock(rng: Rng, cfg: { equipmentCount: number; potionCount: number; maxTier: number }): string[] {
+  const equipment = rng.shuffle(Object.values(EQUIPMENT).filter((e) => e.tier <= cfg.maxTier).map((e) => e.id));
+  const potions = rng.shuffle([...POTION_IDS]).map(potionItemId);
+  return [...equipment.slice(0, cfg.equipmentCount), ...potions.slice(0, cfg.potionCount)];
 }
 
 function tryGenerate(rng: Rng, opts: Required<MapGenOptions>): FloorMap | null {
@@ -114,7 +118,7 @@ function tryGenerate(rng: Rng, opts: Required<MapGenOptions>): FloorMap | null {
 
   cells[map.startId].type = 'start';
   cells[map.startId].visited = true;
-  cells[map.startId].shopStock = [...SHOP_CONFIG.startStock];
+  cells[map.startId].shopStock = rollShopStock(rng, SHOP_CONFIG.start);
   cells[map.bossId].type = 'boss';
 
   const { counts, specialTypes } = MAP_CONFIG;
@@ -127,7 +131,8 @@ function tryGenerate(rng: Rng, opts: Required<MapGenOptions>): FloorMap | null {
   if (types.length > rest.length) return null;
   types.forEach((type, i) => {
     rest[i].type = type;
-    if (type === 'shop') rest[i].shopStock = rollShopStock(rng);
+    if (type === 'shop') rest[i].shopStock = rollShopStock(rng, SHOP_CONFIG.general);
+    if (type === 'altar') rest[i].altarEffect = rng.pick(ALTAR_EFFECTS).id;
   });
 
   if (!isBossReachable(map)) return null;

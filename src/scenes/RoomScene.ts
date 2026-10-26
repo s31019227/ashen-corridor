@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { BOSS_ID, ENEMIES, MOB_POOL } from '../config/enemies';
 import { GAME_CONFIG } from '../config/game';
+import { getAltarEffect } from '../config/altar';
 import { ROOM_EVENT_CONFIG } from '../config/map';
 import { ROOM_COLORS, THEME } from '../config/theme';
+import { difficultyLevel, difficultyScale, type DifficultyScale } from '../core/difficulty';
 import { markCleared, neighbors } from '../core/mapGen';
 import { Rng, randomSeed } from '../core/rng';
 import { canTransition, type RoomBounds } from '../core/roomTransition';
@@ -17,6 +19,7 @@ import { EnemySystem } from '../systems/EnemySystem';
 import { inputHub, KeyboardInput } from '../systems/InputSystem';
 import { usePotion } from '../systems/PotionSystem';
 import { useSkill } from '../systems/SkillSystem';
+import { formatAltarEffect } from '../ui/statText';
 import { floatText } from '../ui/text';
 import { endRun } from './flow';
 import { SCENES } from './keys';
@@ -53,6 +56,8 @@ export class RoomScene extends Phaser.Scene {
   private transitioning = false;
   private finished = false;
   private nextEnemyId = 1;
+  /** 進入此格時的難度（此格已計入探索） */
+  private difficulty: DifficultyScale = difficultyScale(0);
 
   constructor() {
     super(SCENES.room);
@@ -82,6 +87,7 @@ export class RoomScene extends Phaser.Scene {
     this.run = run;
     this.cell = run.map.cells[run.currentRoomId];
     this.cell.visited = true;
+    this.difficulty = difficultyScale(difficultyLevel(run.map));
     this.enemies = [];
     this.interactable = null;
     this.transitioning = false;
@@ -220,7 +226,7 @@ export class RoomScene extends Phaser.Scene {
   }
 
   private addEnemy(defId: string, x: number, y: number) {
-    const enemy = new Enemy(this, this.nextEnemyId++, ENEMIES[defId], x, y);
+    const enemy = new Enemy(this, this.nextEnemyId++, ENEMIES[defId], x, y, this.difficulty);
     enemy.view.on(
       'pointerdown',
       (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
@@ -233,7 +239,7 @@ export class RoomScene extends Phaser.Scene {
 
   private onEnemyKilled(enemy: Enemy) {
     const [min, max] = enemy.def.goldDrop;
-    const gold = Phaser.Math.Between(min, max);
+    const gold = Math.round(Phaser.Math.Between(min, max) * this.difficulty.gold);
     addGold(this.run, gold);
     this.run.kills++;
     floatText(this, enemy.x, enemy.y, `+${gold}G`, THEME.textGold);
@@ -298,15 +304,23 @@ export class RoomScene extends Phaser.Scene {
     this.scene.launch(SCENES.shop, { mode: 'shop', cellId: this.cell.id });
   }
 
+  /** 祭壇：先說明契約內容與代價，由玩家決定是否接受；拒絕的話之後還能回來 */
   private useAltar() {
-    if (this.cell.cleared) {
+    const effect = getAltarEffect(this.cell.altarEffect);
+    if (this.cell.cleared || !effect) {
       this.toast(t('msg.altarSpent'), THEME.textDim);
       return;
     }
-    const { cost, restorePercent } = ROOM_EVENT_CONFIG.altar;
+    const cost = effect.goldCost;
+    const lines = [
+      t('altar.title', { name: t(effect.nameKey) }),
+      t('altar.effectLine', { effect: formatAltarEffect(effect) }),
+      cost > 0 ? t('altar.costLine', { cost }) : t('altar.freeLine'),
+      t('altar.duration'),
+    ];
     this.scene.pause();
     this.scene.launch(SCENES.dialog, {
-      message: t('altar.prompt', { cost }),
+      message: lines.join('\n'),
       confirmText: t('altar.confirm'),
       cancelText: t('altar.cancel'),
       onConfirm: () => {
@@ -315,11 +329,9 @@ export class RoomScene extends Phaser.Scene {
           return;
         }
         this.run.gold -= cost;
-        const restoreHp = Math.random() < 0.5;
-        const p = this.player;
-        if (restoreHp) p.heal((p.stats.maxHp * restorePercent) / 100, 0);
-        else p.heal(0, (p.stats.maxMp * restorePercent) / 100);
-        this.toast(t('msg.altarUsed', { stat: t(restoreHp ? 'stat.hp' : 'stat.mp') }), THEME.textGreen);
+        this.run.altarEffects.push(effect.id);
+        this.player.refreshStats();
+        this.toast(t('msg.altarAccepted', { name: t(effect.nameKey) }), THEME.textGold);
         this.cell.cleared = true;
         this.markInteractableUsed();
         this.syncRun();
@@ -380,10 +392,11 @@ export class RoomScene extends Phaser.Scene {
         case 'potion3':
         case 'potion4':
         case 'potion5':
+          if (Number(action.slice(-1)) > this.run.potions.length) break; // 超出藥水欄格數的按鍵不作用
           usePotion(this, this.run, this.player, Number(action.slice(-1)) - 1, (m, c) => this.toast(m, c));
           break;
         case 'attack':
-          this.combat.manualAttack();
+          this.toggleAutoAttack();
           break;
         case 'unlock':
           this.combat.unlock();
@@ -416,6 +429,13 @@ export class RoomScene extends Phaser.Scene {
     this.scene.pause();
     this.scene.pause(SCENES.ui);
     this.scene.launch(SCENES.settings, { from: SCENES.room });
+  }
+
+  /** 攻擊鍵：切換自動普攻（開 = 自動普攻，關 = 不普攻） */
+  toggleAutoAttack() {
+    const on = !session.settings.autoAttack;
+    session.updateSettings({ autoAttack: on });
+    this.toast(t(on ? 'hud.autoOn' : 'hud.autoOff'), on ? THEME.textGreen : THEME.textDim);
   }
 
   /** 解除鎖定（HUD 按鈕使用） */
@@ -459,7 +479,7 @@ export class RoomScene extends Phaser.Scene {
       g.lineStyle(1, THEME.lockRing, 0.5).strokeCircle(target.x, target.y, target.radius + 5);
     }
     // 普攻範圍提示
-    g.lineStyle(1, 0xffffff, 0.06).strokeCircle(p.x, p.y, p.radius + p.classDef.attackRange);
+    g.lineStyle(1, 0xffffff, 0.06).strokeCircle(p.x, p.y, p.radius + p.attackRange);
   }
 
   private checkCleared() {

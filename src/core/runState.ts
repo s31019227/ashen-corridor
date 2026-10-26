@@ -3,7 +3,7 @@ import { generateFloor } from './mapGen';
 import { computeStats } from './stats';
 import { EQUIP_SLOTS, type ClassId, type EquipSlot, type FloorMap, type PotionId } from './types';
 
-export const RUN_STATE_VERSION = 1;
+export const RUN_STATE_VERSION = 3;
 
 /** 一局遊戲的狀態，也是存檔內容 */
 export interface RunState {
@@ -17,8 +17,12 @@ export interface RunState {
   /** 本局累計獲得金幣（結算用） */
   goldEarned: number;
   equipment: Record<EquipSlot, string | null>;
-  /** 5 格藥水欄 */
+  /** 藥水欄（格數見 PLAYER_CONFIG.potionSlots），開局為空 */
   potions: (PotionId | null)[];
+  /** 已解鎖（買過）的藥水，在商店可免費切換攜帶 */
+  unlockedPotions: PotionId[];
+  /** 已接受的祭壇契約 id */
+  altarEffects: string[];
   hp: number;
   mp: number;
   map: FloorMap;
@@ -43,12 +47,22 @@ export function createRun(classId: ClassId, seed: number): RunState {
     kills: 0,
     goldEarned: 0,
     equipment,
-    potions: [...PLAYER_CONFIG.startPotions],
+    potions: Array(PLAYER_CONFIG.potionSlots).fill(null),
+    unlockedPotions: [],
+    altarEffects: [],
     hp: stats.maxHp,
     mp: stats.maxMp,
     map,
     currentRoomId: map.startId,
   };
+}
+
+/**
+ * 讀檔時把舊版本存檔轉成目前格式，無法轉換時回傳 null（主選單就不會出現「繼續」）。
+ * v3 重做了裝備與商店，舊存檔的裝備 id 已不存在，因此 v1、v2 存檔直接作廢。
+ */
+export function migrateRun(data: RunState): RunState | null {
+  return data.version === RUN_STATE_VERSION ? data : null;
 }
 
 export function addGold(run: RunState, amount: number) {

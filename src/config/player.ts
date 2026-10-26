@@ -7,13 +7,22 @@ export const PLAYER_BASE_STATS: Stats = {
   atk: 12,
   def: 3,
   moveSpeed: 220,
+  attackSpeed: 0,
+  attackRange: 0,
+  critChance: 5,
+  mpRegen: 1,
+  cooldownReduction: 0,
 };
 
 export const PLAYER_CONFIG = {
   radius: 16,
-  startGold: 120,
-  /** 一局開始時藥水欄的初始內容 */
-  startPotions: ['hp', null, null, null, null] as const,
-  /** 裝備屬性目前不生效；之後要啟用時改為 true 即可 */
-  applyEquipmentStats: false,
+  startGold: 150,
+  /** 藥水欄格數：一次只能帶一種藥水。開局沒有藥水，購買後解鎖，之後在商店可免費切換已解鎖的藥水 */
+  potionSlots: 1,
+  /** 裝備屬性是否生效 */
+  applyEquipmentStats: true,
+  /** 爆擊傷害倍率 */
+  critMultiplier: 1.5,
+  /** 技能冷卻縮減上限（%） */
+  maxCooldownReduction: 40,
 };

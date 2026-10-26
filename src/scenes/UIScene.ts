@@ -2,10 +2,11 @@ import Phaser from 'phaser';
 import { CLASSES } from '../config/classes';
 import { GAME_CONFIG } from '../config/game';
 import { ACTION_KEY_LABEL, type GameAction } from '../config/keybinds';
+import { PLAYER_CONFIG } from '../config/player';
 import { POTIONS } from '../config/potions';
+import { difficultyLevel } from '../core/difficulty';
 import { THEME } from '../config/theme';
 import type { Cooldown } from '../core/cooldown';
-import { POTION_SLOT_COUNT } from '../core/types';
 import { t } from '../i18n';
 import { session } from '../state/session';
 import { inputHub } from '../systems/InputSystem';
@@ -39,7 +40,7 @@ export class UIScene extends Phaser.Scene {
   private goldText!: Phaser.GameObjects.Text;
   private killsText!: Phaser.GameObjects.Text;
   private roomText!: Phaser.GameObjects.Text;
-  private autoText!: Phaser.GameObjects.Text;
+  private dangerText!: Phaser.GameObjects.Text;
   private unlockBtn!: Button;
   private toastText!: Phaser.GameObjects.Text;
   private toastTween?: Phaser.Tweens.Tween;
@@ -92,11 +93,7 @@ export class UIScene extends Phaser.Scene {
       height: 40,
       fontSize: 14,
     });
-    this.autoText = addText(this, width - 200, 130, '', 13, THEME.textDim).setInteractive({ useHandCursor: true });
-    this.autoText.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-      e.stopPropagation();
-      session.updateSettings({ autoAttack: !session.settings.autoAttack });
-    });
+    this.dangerText = addText(this, width - 200, 130, '', 14, THEME.textRed);
 
     // 解除鎖定
     this.unlockBtn = new Button(this, width - 110, height - 290, t('hud.unlock'), () => this.room.unlockTarget(), {
@@ -158,7 +155,8 @@ export class UIScene extends Phaser.Scene {
     const def = CLASSES[session.run!.classId];
     const ax = width - 90;
     const ay = height - 90;
-    this.skillButtons.push(this.makeButton(ax, ay, 'attack', t('hud.attack'), 52, 0x3a2020));
+    // 攻擊按鈕 = 自動普攻開關
+    this.skillButtons.push(this.makeButton(ax, ay, 'attack', '', 52, 0x3a2020));
     const layout: [GameAction, number, number, number][] = [
       ['skill1', ax - 118, ay + 22, 36],
       ['skill2', ax - 108, ay - 72, 36],
@@ -173,12 +171,13 @@ export class UIScene extends Phaser.Scene {
 
   private createPotionButtons() {
     const { width, height } = GAME_CONFIG;
-    const size = 48;
+    const size = 56;
     const gap = 8;
-    const startX = width / 2 - ((size + gap) * POTION_SLOT_COUNT - gap) / 2 + size / 2 + 120;
-    for (let i = 0; i < POTION_SLOT_COUNT; i++) {
+    // 放在技能按鈕左邊，多格時往左排
+    const firstX = width - 290 - (PLAYER_CONFIG.potionSlots - 1) * (size + gap);
+    for (let i = 0; i < PLAYER_CONFIG.potionSlots; i++) {
       const action = `potion${i + 1}` as GameAction;
-      this.potionButtons.push(this.makeButton(startX + i * (size + gap), height - 34, action, '', size / 2, THEME.button, size));
+      this.potionButtons.push(this.makeButton(firstX + i * (size + gap), height - 44, action, '', size / 2, THEME.button, size));
     }
   }
 
@@ -232,7 +231,11 @@ export class UIScene extends Phaser.Scene {
     const roomName = t(`room.${room.cell.type}`);
     const left = room.aliveEnemies.length;
     this.roomText.setText(left > 0 ? `${roomName}・${t('hud.enemiesLeft', { count: left })}` : roomName);
-    this.autoText.setText(session.settings.autoAttack ? t('hud.autoOn') : t('hud.autoOff'));
+    this.dangerText.setText(t('hud.danger', { level: difficultyLevel(run.map) }));
+    const auto = session.settings.autoAttack;
+    const attackBtn = this.skillButtons[0];
+    attackBtn.label.setText(`${t('hud.autoAttack')}\n${t(auto ? 'settings.on' : 'settings.off')}`);
+    (attackBtn.container.list[0] as Phaser.GameObjects.Arc).setFillStyle(auto ? 0x8b2e2e : 0x2a2830, 0.9);
     this.unlockBtn.setVisible(p.lockedId !== null);
     this.refreshMinimap();
 
@@ -242,7 +245,7 @@ export class UIScene extends Phaser.Scene {
       const def = potionId ? POTIONS[potionId] : null;
       btn.label.setText(def ? t(def.shortKey) : '');
       (btn.container.list[0] as Phaser.GameObjects.Rectangle).setFillStyle(def ? def.color : THEME.button, def ? 0.8 : 0.4);
-      this.drawCooldown(btn, potionId ? p.potionCds[potionId] : undefined);
+      this.drawCooldown(btn, potionId ? p.potionCds[i] : undefined);
     });
   }
 }

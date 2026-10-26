@@ -33,16 +33,10 @@ export class SettingsScene extends Phaser.Scene {
     const top = height / 2 - (inGame ? 190 : 150);
     addText(this, width / 2, top, t(inGame ? 'hud.pause' : 'settings.title'), 30).setOrigin(0.5);
 
-    // 自動普攻
-    addText(this, width / 2 - 220, top + 80, t('settings.autoAttack'), 20).setOrigin(0, 0.5);
-    const autoBtn = new Button(this, width / 2 + 150, top + 80, '', () => {
-      session.updateSettings({ autoAttack: !session.settings.autoAttack });
-      refresh();
-    }, { width: 160, height: 44 });
-
+    // 自動普攻改由遊戲中的攻擊鍵切換，這裡不再提供
     // 語言（目前只有中文可選）
-    addText(this, width / 2 - 220, top + 140, t('settings.language'), 20).setOrigin(0, 0.5);
-    const langBtn = new Button(this, width / 2 + 150, top + 140, '', () => {
+    addText(this, width / 2 - 220, top + 110, t('settings.language'), 20).setOrigin(0, 0.5);
+    const langBtn = new Button(this, width / 2 + 150, top + 110, '', () => {
       const next = LOCALES[(LOCALES.indexOf(getLocale()) + 1) % LOCALES.length] as Locale;
       if (AVAILABLE_LOCALES.includes(next)) {
         session.updateSettings({ locale: next });
@@ -51,13 +45,9 @@ export class SettingsScene extends Phaser.Scene {
         langNote.setText(`${t(`lang.${next}`)} ${t('settings.langUnavailable')}`);
       }
     }, { width: 160, height: 44 });
-    const langNote = addText(this, width / 2 + 150, top + 176, '', 13, THEME.textDim).setOrigin(0.5);
+    const langNote = addText(this, width / 2 + 150, top + 146, '', 13, THEME.textDim).setOrigin(0.5);
 
-    const refresh = () => {
-      autoBtn.setText(session.settings.autoAttack ? t('settings.on') : t('settings.off'));
-      langBtn.setText(t(`lang.${getLocale()}`));
-    };
-    refresh();
+    langBtn.setText(t(`lang.${getLocale()}`));
 
     if (inGame) {
       new Button(this, width / 2, top + 240, t('settings.resume'), () => this.close(), { width: 300, color: THEME.accent });

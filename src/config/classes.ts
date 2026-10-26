@@ -31,6 +31,10 @@ export interface ClassDef {
   attackInterval: number;
   /** 普攻擊退距離（像素），0 表示不擊退 */
   attackKnockback: number;
+  /** 近戰普攻傷害倍率（預設 1） */
+  meleeDamageMult?: number;
+  /** 遠程普攻（投射物）傷害倍率（預設 1） */
+  rangedDamageMult?: number;
   /** 以 PLAYER_BASE_STATS 為基礎的倍率 */
   statMultipliers: Partial<Record<keyof Stats, number>>;
   color: number;
@@ -106,6 +110,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     meleeRange: 40,
     attackInterval: 0.55,
     attackKnockback: 0,
+    meleeDamageMult: 1.3,
+    rangedDamageMult: 0.9,
     statMultipliers: { maxHp: 0.85, atk: 1.15, def: 0.8, moveSpeed: 1.2 },
     color: 0x6a4a7a,
     passive: passive('assassin', 'backstab'),
