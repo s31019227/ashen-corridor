@@ -175,6 +175,7 @@ export const zhTW = {
   'shop.classOnly': '限{classes}',
   'shop.equippedStats': '目前：{stats}',
   'shop.compare': '換上後：{diff}',
+  'shop.compareLabel': '換上後',
   'shop.compareNone': '換上後：屬性不變',
   'shop.slotEmpty': '此欄位尚未裝備',
   'shop.noStats': '無屬性',

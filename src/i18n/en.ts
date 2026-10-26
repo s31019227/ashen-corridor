@@ -166,6 +166,7 @@ export const en: Record<I18nKey, string> = {
   'shop.classOnly': '',
   'shop.equippedStats': '',
   'shop.compare': '',
+  'shop.compareLabel': '',
   'shop.compareNone': '',
   'shop.slotEmpty': '',
   'shop.noStats': '',

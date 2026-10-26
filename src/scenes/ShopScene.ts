@@ -19,6 +19,7 @@ import type { GameEvent } from '../sim/types';
 import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
 import { formatAltarEffect, formatStats, formatStatValue } from '../ui/statText';
+import { addPotionIcon, addSlotIcon } from '../ui/icons';
 import { addText } from '../ui/text';
 import { isPhone } from '../ui/device';
 
@@ -32,6 +33,14 @@ type Tab = 'equipment' | 'potion' | 'stats' | 'skills';
 interface ShopData {
   mode: ShopMode;
   cellId?: number;
+}
+
+/** 判斷是否需要重畫：血量、魔力每幀都在變，不算進去（否則按鈕會一直重建、點不到） */
+function shopKey(): string {
+  const me = net.me;
+  if (!me) return '';
+  const { hp: _hp, mp: _mp, ...rest } = me;
+  return JSON.stringify(rest);
 }
 
 /** 商店與裝備查看介面（疊在戰鬥場景上，開啟時戰鬥場景暫停） */
@@ -72,7 +81,7 @@ export class ShopScene extends Phaser.Scene {
       if (e.k === 'toast' && e.pid === net.myId) this.message.setText(tEvent(e.key, e.params)).setColor(e.color ?? THEME.text);
     };
     const onState = () => {
-      const key = JSON.stringify(net.me ?? null);
+      const key = shopKey();
       if (key !== this.lastKey) this.render();
     };
     net.on('game', onGame);
@@ -89,7 +98,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private render() {
-    this.lastKey = JSON.stringify(net.me ?? null);
+    this.lastKey = shopKey();
     this.content.removeAll(true);
     if (this.mode === 'shop') this.renderStock();
     else this.renderStats();
@@ -127,13 +136,12 @@ export class ShopScene extends Phaser.Scene {
       const owned = isOwned(run, item);
       const usable = canEquip(def, run.classId);
       this.add2(this.add.rectangle(400, y, 640, 60 * S, THEME.button, 0.6));
-      const name = this.add2(addText(this, 96, y - 18 * S, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
-      this.add2(addText(this, 104 + name.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
-      this.add2(addText(this, 96, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
-      if (!owned && usable) {
-        const [text, color] = this.compareText(item.id);
-        this.add2(addText(this, 96, y + 21 * S, text, 13, color).setOrigin(0, 0.5));
-      }
+      this.add2(addSlotIcon(this, 112, y, def.slot, def.armorType, 40 * S, !usable));
+      const tx = 112 + 26 * S;
+      const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, tx + 8 + name.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
+      this.add2(addText(this, tx, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
+      if (!owned && usable) this.renderCompare(item.id, tx, y + 21 * S);
       this.add2(addText(this, 520, y, t('shop.price', { price: item.price }), 16, THEME.textGold).setOrigin(1, 0.5));
       const label = owned ? t('shop.equipped') : usable ? t('shop.buy') : t('shop.wrongClass');
       const btn = new Button(this, 640, y, label, () => this.buy(item), { width: 120, height: 38, fontSize: 16 });
@@ -156,10 +164,11 @@ export class ShopScene extends Phaser.Scene {
       const unlocked = run.unlockedPotions.includes(potionId);
       const carried = isCarried(run, potionId);
       this.add2(this.add.rectangle(400, y, 640, 52 * S, THEME.button, 0.6));
+      this.add2(addPotionIcon(this, 112, y, def.color, 38 * S));
       const name = carried ? `${t(def.nameKey)}（${t('shop.potionCurrent')}）` : t(def.nameKey);
-      this.add2(addText(this, 96, y - 11 * S, name, 17, carried ? THEME.textGreen : THEME.text).setOrigin(0, 0.5));
+      this.add2(addText(this, 112 + 26 * S, y - 11 * S, name, 17, carried ? THEME.textGreen : THEME.text).setOrigin(0, 0.5));
       this.add2(
-        addText(this, 96, y + 12 * S, t('potion.desc', { hp: def.hpPercent, mp: def.mpPercent, cd: def.cooldown }), 13, THEME.textDim).setOrigin(0, 0.5),
+        addText(this, 112 + 26 * S, y + 12 * S, t('potion.desc', { hp: def.hpPercent, mp: def.mpPercent, cd: def.cooldown }), 13, THEME.textDim).setOrigin(0, 0.5),
       );
       const priceText = unlocked ? t('shop.unlocked') : t('shop.price', { price: def.price });
       this.add2(addText(this, 520, y, priceText, 16, unlocked ? THEME.textGreen : THEME.textGold).setOrigin(1, 0.5));
@@ -186,16 +195,26 @@ export class ShopScene extends Phaser.Scene {
     return slot;
   }
 
-  /** 與同欄位目前裝備比較，回傳文字與顏色（全部提升為綠、全部下降為紅、有升有降為金） */
-  private compareText(itemId: string): [string, string] {
+  /** 與同欄位目前裝備比較：增加的（綠）與減少的（紅）分開顯示 */
+  private renderCompare(itemId: string, x: number, y: number) {
     const def = EQUIPMENT[itemId];
     const currentId = net.me!.equipment[def.slot];
     const current = currentId ? EQUIPMENT[currentId].stats : {};
     const diff = statDiff(current, def.stats);
-    const values = Object.values(diff) as number[];
-    if (values.length === 0) return [t('shop.compareNone'), THEME.textDim];
-    const color = values.every((v) => v > 0) ? THEME.textGreen : values.every((v) => v < 0) ? THEME.textRed : THEME.textGold;
-    return [t('shop.compare', { diff: formatStats(diff) }), color];
+    const gains = Object.fromEntries(Object.entries(diff).filter(([, v]) => v! > 0));
+    const losses = Object.fromEntries(Object.entries(diff).filter(([, v]) => v! < 0));
+    if (Object.keys(diff).length === 0) {
+      this.add2(addText(this, x, y, t('shop.compareNone'), 13, THEME.textDim).setOrigin(0, 0.5));
+      return;
+    }
+    let cx = x;
+    const part = (text: string, color: string) => {
+      const obj = this.add2(addText(this, cx, y, text, 13, color).setOrigin(0, 0.5));
+      cx += obj.width + 10;
+    };
+    part(t('shop.compareLabel'), THEME.textDim);
+    if (Object.keys(gains).length > 0) part(`▲ ${formatStats(gains)}`, THEME.textGreen);
+    if (Object.keys(losses).length > 0) part(`▼ ${formatStats(losses)}`, THEME.textRed);
   }
 
   private buy(item: ShopItem) {
@@ -254,10 +273,12 @@ export class ShopScene extends Phaser.Scene {
       const itemId = run.equipment[slot];
       const def = itemId ? EQUIPMENT[itemId] : null;
       this.add2(this.add.rectangle(x + w / 2, y, w, 42 * S, THEME.button, 0.6));
-      this.add2(addText(this, x + 10, y, t(`slot.${slot}`), 15, THEME.textDim).setOrigin(0, 0.5));
-      this.add2(addText(this, x + 70, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addSlotIcon(this, x + 22, y, slot, def?.armorType, 34 * S, !def));
+      this.add2(addText(this, x + 46 * S, y, t(`slot.${slot}`), 14, THEME.textDim).setOrigin(0, 0.5));
+      const nx = x + 46 * S + 50 * S;
+      this.add2(addText(this, nx, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
       const statsLine = def ? formatStats(def.stats, t('shop.noStats')) : t('shop.slotEmpty');
-      this.add2(addText(this, x + 70, y + 10 * S, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, nx, y + 10 * S, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
     });
     const py = 130 + EQUIP_SLOTS.length * 48 * S;
     this.add2(addText(this, x, py, t('shop.potionSlots'), 16, THEME.textDim));
