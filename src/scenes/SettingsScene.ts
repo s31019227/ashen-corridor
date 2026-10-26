@@ -8,6 +8,7 @@ import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
 import { addText } from '../ui/text';
 import { goToMenu } from './flow';
+import { toggleFullscreen } from '../ui/fullscreen';
 import { SCENES } from './keys';
 
 interface SettingsData {
@@ -49,6 +50,15 @@ export class SettingsScene extends Phaser.Scene {
     const langNote = addText(this, width / 2 + 150, top + 146, '', 13, THEME.textDim).setOrigin(0.5);
 
     langBtn.setText(t(`lang.${getLocale()}`));
+
+    // 全螢幕
+    addText(this, width / 2 - 220, top + 180, t('settings.fullscreen'), 20).setOrigin(0, 0.5);
+    const fsBtn = new Button(this, width / 2 + 150, top + 180, '', () => {
+      if (!toggleFullscreen(this.game)) fsNote.setText(t('hint.addToHome'));
+      this.time.delayedCall(300, () => fsBtn.setText(t(this.scale.isFullscreen ? 'settings.on' : 'settings.off')));
+    }, { width: 160, height: 44 });
+    fsBtn.setText(t(this.scale.isFullscreen ? 'settings.on' : 'settings.off'));
+    const fsNote = addText(this, width / 2, top + 212, '', 12, THEME.textGold, { align: 'center', wordWrap: { width: 540 } }).setOrigin(0.5);
 
     if (inGame) {
       new Button(this, width / 2, top + 240, t('settings.resume'), () => this.close(), { width: 300, color: THEME.accent });

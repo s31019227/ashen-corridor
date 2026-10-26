@@ -83,15 +83,11 @@ export function runSkill(ctx: SkillContext) {
   (SKILL_HANDLERS[ctx.skill.id] ?? defaultHandler)(ctx);
 }
 
-/** 開關型技能的持續效果，每秒結算一次 */
+/** 開關型技能的持續效果，每 interval 秒結算一次 */
 export function updateToggles(sim: Sim, p: PlayerEntity, dt: number) {
   const pr = sim.run.players[p.id];
   const def = CLASSES[pr.classId];
   if (!p.toggles.sacrifice) return;
-  p.toggleTick += dt;
-  if (p.toggleTick < 1) return;
-  p.toggleTick -= 1;
-
   const index = def.skills.findIndex((s) => s.id === 'sacrifice');
   const skill = def.skills[index];
   const rank = pr.skillRanks[index] ?? 0;
@@ -99,8 +95,13 @@ export function updateToggles(sim: Sim, p: PlayerEntity, dt: number) {
     p.toggles.sacrifice = false;
     return;
   }
-  // 燃燒自身血量（不會因此倒下）
-  p.hp = Math.max(1, p.hp - rankValue(skill.values.selfDamage, rank));
+  const interval = rankValue(skill.values.interval, rank) || 1;
+  p.toggleTick += dt;
+  if (p.toggleTick < interval) return;
+  p.toggleTick -= interval;
+
+  // 燃燒自身血量（每秒 selfDamage，不會因此倒下）
+  p.hp = Math.max(1, p.hp - rankValue(skill.values.selfDamage, rank) * interval);
   const range = rankValue(skill.values.range, rank);
   const ratio = rankValue(skill.values.ratio, rank);
   for (const e of sim.world.enemies) {

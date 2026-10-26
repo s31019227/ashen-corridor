@@ -97,7 +97,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
         maxRank: 5,
         cooldown: [5, 4, 3, 2, 1],
         mpCost: [5],
-        values: { mult: [2], lifesteal: [100] },
+        values: { mult: [2], lifesteal: [50] },
       },
       {
         ...keys('warrior', 'sacrifice'),
@@ -105,7 +105,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
         maxRank: 5,
         cooldown: [0],
         mpCost: [0],
-        values: { selfDamage: [1], range: [35, 42, 49, 56, 63], ratio: [50, 60, 70, 80, 90] },
+        // 每 interval 秒結算一次：每秒燒 selfDamage 血；每跳造成攻擊力 ratio% 傷害（不吃被動，所以倍率較高）
+        values: { selfDamage: [1], interval: [0.5], range: [35, 42, 49, 56, 63], ratio: [100, 120, 140, 160, 180] },
       },
       {
         ...keys('warrior', 'charge'),

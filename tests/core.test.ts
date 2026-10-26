@@ -350,7 +350,7 @@ describe('warrior skills', () => {
   it('heavy strike empowers the next attack with lifesteal', () => {
     const { sim, p, e } = setup();
     applyAction(sim, 'a', { k: 'skill', i: 0 });
-    expect(p.empower).toEqual({ mult: 2, lifesteal: 100 });
+    expect(p.empower).toEqual({ mult: 2, lifesteal: 50 });
     e.x = p.x + 40;
     e.y = p.y;
     sim.world.enemies = [e];
@@ -437,7 +437,7 @@ describe('warrior skill scaling', () => {
     e.x = p.x + 16 + 35 + er - 0.5; // 光環邊緣剛好碰到怪物邊緣
     const hp0 = e.hp;
     applyAction(sim, 'a', { k: 'skill', i: 1 });
-    stepSim(sim, 1.01);
+    stepSim(sim, 0.51); // 每 0.5 秒結算一次
     expect(e.hp).toBeLessThan(hp0);
   });
 });

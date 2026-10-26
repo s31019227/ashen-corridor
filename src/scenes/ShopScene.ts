@@ -7,7 +7,10 @@ import { POTIONS } from '../config/potions';
 import { potionItemId } from '../config/shop';
 import { THEME } from '../config/theme';
 import { isCarried, isOwned, resolveShopItem, type ShopItem } from '../core/inventory';
-import { computeStats, statDiff, STAT_KEYS } from '../core/stats';
+import { skillPoints } from '../core/leveling';
+import { playerStats } from '../core/runState';
+import { statDiff, STAT_KEYS } from '../core/stats';
+import { renderSkillList } from '../ui/classDetail';
 import { EQUIP_SLOTS, POTION_IDS, type PotionId } from '../core/types';
 import { t, tEvent } from '../i18n';
 import { net } from '../net/client';
@@ -19,7 +22,7 @@ import { addText } from '../ui/text';
 import { SCENES } from './keys';
 
 type ShopMode = 'shop' | 'equipment';
-type Tab = 'equipment' | 'potion';
+type Tab = 'equipment' | 'potion' | 'stats' | 'skills';
 
 interface ShopData {
   mode: ShopMode;
@@ -44,7 +47,7 @@ export class ShopScene extends Phaser.Scene {
     const run = net.run!;
     this.stock = data.cellId !== undefined ? (run.map.cells[data.cellId].shopStock ?? []) : [];
     this.lastKey = '';
-    this.tab = 'equipment';
+    this.tab = data.mode === 'shop' ? 'equipment' : 'stats';
   }
 
   create() {
@@ -199,9 +202,25 @@ export class ShopScene extends Phaser.Scene {
   }
 
   /** 背包模式左側：角色最終屬性與已接受的祭壇契約 */
+  /** 背包模式左側：屬性 / 技能 兩個分頁 */
   private renderStats() {
+    const tabs: Tab[] = ['stats', 'skills'];
+    tabs.forEach((tab, i) => {
+      const color = this.tab === tab ? THEME.accent : THEME.button;
+      const btn = new Button(this, 300 + i * 130, 76, t(tab === 'stats' ? 'shop.tabStats' : 'shop.tabSkills'), () => {
+        this.tab = tab;
+        this.render();
+      }, { width: 120, height: 38, fontSize: 16, color });
+      this.add2(btn);
+    });
+    if (this.tab === 'skills') {
+      const me = net.me!;
+      this.add2(addText(this, 96, 112, `Lv.${me.level}　${t('hud.skillPoints', { n: skillPoints(me) })}`, 16, THEME.textGold));
+      renderSkillList(this, this.content, me.classId, 96, 146, 610, false, me.skillRanks);
+      return;
+    }
     const run = net.me!;
-    const stats = computeStats(run.classId, run.equipment, run.altarEffects);
+    const stats = playerStats(run);
     this.add2(addText(this, 96, 110, t('shop.finalStats'), 18, THEME.textDim));
     STAT_KEYS.forEach((k, i) => {
       this.add2(addText(this, 96, 145 + i * 29, `${t(`stat.${k}`)}`, 16, THEME.textDim));

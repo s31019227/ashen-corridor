@@ -43,6 +43,8 @@ export function renderSkillList(
   y: number,
   width: number,
   compact = false,
+  /** 傳入時在標題後顯示目前技能等級（背包頁面用） */
+  ranks?: number[],
 ): number {
   const def = CLASSES[classId];
   const headSize = compact ? 14 : 16;
@@ -56,6 +58,13 @@ export function renderSkillList(
   };
   entry(`${t('classSelect.passive')} ${t(def.passive.nameKey)}`, passiveDescription(def.passive), THEME.textGold);
   const labels = ['[Q]', '[E]', '[R]', `[F] ${t('classSelect.ultimate')}`];
-  [...def.skills, def.ultimate].forEach((skill, i) => entry(skillHeader(skill, labels[i]), skillDescription(skill), THEME.text));
+  [...def.skills, def.ultimate].forEach((skill, i) => {
+    let head = skillHeader(skill, labels[i]);
+    if (ranks) {
+      const rank = ranks[i] ?? 0;
+      head += rank > 0 ? `　${t('skillInfo.rank', { rank, max: skill.maxRank })}` : `　${t('skillInfo.notLearned')}`;
+    }
+    entry(head, skillDescription(skill), ranks && !ranks[i] ? THEME.textDim : THEME.text);
+  });
   return y;
 }

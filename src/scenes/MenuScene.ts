@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { net } from '../net/client';
 import { loadGame } from '../save/storage';
 import { Button } from '../ui/Button';
+import { isStandalone, toggleFullscreen } from '../ui/fullscreen';
 import { addText } from '../ui/text';
 import { SCENES } from './keys';
 
@@ -68,9 +69,26 @@ export class MenuScene extends Phaser.Scene {
       this.scene.launch(SCENES.settings, { from: SCENES.menu });
     });
 
+    // 全螢幕（手機空間較小時好用）。iPhone 不支援，改提示加入主畫面
+    if (!isStandalone()) {
+      new Button(this, GAME_CONFIG.width - 90, 40, t('menu.fullscreen'), () => {
+        if (!toggleFullscreen(this.game)) this.showHint(t('hint.addToHome'));
+      }, { width: 150, height: 44, fontSize: 16 });
+    }
+
     if (this.message) {
       addText(this, cx, GAME_CONFIG.height - 40, t(this.message), 18, THEME.textRed).setOrigin(0.5);
     }
+  }
+
+  private hintText?: Phaser.GameObjects.Text;
+
+  private showHint(text: string) {
+    this.hintText?.destroy();
+    this.hintText = addText(this, GAME_CONFIG.width / 2, GAME_CONFIG.height - 70, text, 16, THEME.textGold, {
+      align: 'center',
+      wordWrap: { width: 900 },
+    }).setOrigin(0.5);
   }
 
   /** 輸入房間代碼 */

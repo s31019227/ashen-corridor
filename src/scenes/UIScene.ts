@@ -16,6 +16,7 @@ import { inputHub } from '../systems/InputSystem';
 import { Bar } from '../ui/Bar';
 import { Button, CLICK_GUARD_MS } from '../ui/Button';
 import { addText } from '../ui/text';
+import { isStandalone, toggleFullscreen } from '../ui/fullscreen';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
 import { drawMap } from './MapScene';
 import { SCENES } from './keys';
@@ -108,6 +109,11 @@ export class UIScene extends Phaser.Scene {
       height: 40,
       fontSize: 14,
     });
+    if (!isStandalone()) {
+      new Button(this, width - 36, 122, '⛶', () => {
+        if (!toggleFullscreen(this.game)) this.showToast(t('hint.addToHome'), THEME.textGold);
+      }, { width: 48, height: 40, fontSize: 20 });
+    }
     this.dangerText = addText(this, width - 200, 130, '', 14, THEME.textRed);
     // 多人：隊友狀態、連線狀態
     this.teamText = addText(this, 20, 154, '', 14, THEME.textDim, { lineSpacing: 4 });
