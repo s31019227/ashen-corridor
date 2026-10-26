@@ -4,6 +4,7 @@ import { THEME } from '../config/theme';
 import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
 import { addText } from '../ui/text';
+import { net } from '../net/client';
 import { SCENES } from './keys';
 
 export interface DialogData {
@@ -11,8 +12,6 @@ export interface DialogData {
   confirmText: string;
   cancelText: string;
   onConfirm: () => void;
-  /** 關閉後要恢復的場景，預設為戰鬥場景 */
-  resume?: string;
 }
 
 /** 通用確認對話框 */
@@ -51,8 +50,8 @@ export class DialogScene extends Phaser.Scene {
   }
 
   private close(confirmed: boolean) {
+    net.popUi();
     this.scene.stop();
-    this.scene.resume(this.data_.resume ?? SCENES.room);
     if (confirmed) this.data_.onConfirm();
   }
 }

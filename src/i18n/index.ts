@@ -39,3 +39,16 @@ export function t(key: I18nKey | (string & {}), params?: Record<string, string |
   }
   return text;
 }
+
+/**
+ * 翻譯連線事件帶來的訊息：參數值若本身是字典 key（例如物品名稱的 key），也一併翻譯。
+ * 房主送的是 key 而不是文字，每個玩家才能用自己的語言顯示。
+ */
+export function tEvent(key: string, params?: Record<string, string | number>): string {
+  if (!params) return t(key);
+  const translated: Record<string, string | number> = {};
+  for (const [name, value] of Object.entries(params)) {
+    translated[name] = typeof value === 'string' && value in zhTW ? t(value) : value;
+  }
+  return t(key, translated);
+}

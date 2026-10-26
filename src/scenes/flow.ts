@@ -1,63 +1,42 @@
 import Phaser from 'phaser';
-import { createRun } from '../core/runState';
-import { randomSeed } from '../core/rng';
-import type { ClassId } from '../core/types';
-import { clearRun, loadRun } from '../save/storage';
-import { session } from '../state/session';
+import { net } from '../net/client';
+import type { Phase } from '../net/protocol';
 import { inputHub } from '../systems/InputSystem';
 import { SCENES } from './keys';
 
-// 場景之間的流程切換集中在這裡。
+// 場景之間的切換集中在這裡：連線狀態的「階段」改變時自動換畫面，
+// 房主與加入者看到的畫面因此保持一致。
 
-const GAMEPLAY_SCENES = [SCENES.room, SCENES.ui, SCENES.shop, SCENES.dialog, SCENES.settings, SCENES.map];
+const ALL_SCENES = Object.values(SCENES);
 
-function stopGameplay(scene: Phaser.Scene) {
-  for (const key of GAMEPLAY_SCENES) {
-    if (scene.scene.isActive(key) || scene.scene.isPaused(key) || scene.scene.isSleeping(key)) scene.scene.stop(key);
+/** 停掉所有場景後啟動指定場景 */
+export function switchTo(game: Phaser.Game, key: string, data?: object) {
+  for (const k of ALL_SCENES) {
+    if (k !== key && (game.scene.isActive(k) || game.scene.isPaused(k) || game.scene.isSleeping(k))) game.scene.stop(k);
   }
   inputHub.reset();
-  session.cooldowns = {};
+  game.scene.start(key, data);
 }
 
-export function startNewRun(scene: Phaser.Scene, classId: ClassId) {
-  session.run = createRun(classId, randomSeed());
-  session.save();
-  stopGameplay(scene);
-  scene.scene.start(SCENES.map, { mode: 'intro' });
-}
-
-export function continueRun(scene: Phaser.Scene): boolean {
-  const run = loadRun();
-  if (!run) return false;
-  session.run = run;
-  stopGameplay(scene);
-  scene.scene.start(SCENES.map, { mode: 'intro' });
-  return true;
-}
-
-/** 進入目前所在的格子（開始戰鬥場景與 HUD） */
+/** 進入格子畫面（戰鬥場景 + HUD） */
 export function enterRoom(scene: Phaser.Scene) {
-  scene.scene.start(SCENES.room, {});
+  scene.scene.start(SCENES.room);
   scene.scene.launch(SCENES.ui);
 }
 
-export function goToMenu(scene: Phaser.Scene) {
-  session.save();
-  stopGameplay(scene);
-  scene.scene.start(SCENES.menu);
+/** 離開房間 / 結束單人遊戲，回主選單 */
+export function goToMenu(game: Phaser.Game, message?: string) {
+  net.leave();
+  switchTo(game, SCENES.menu, { message });
 }
 
-/** 結算：清除存檔（死亡或通關都視為本局結束） */
-export function endRun(scene: Phaser.Scene, victory: boolean) {
-  const run = session.run;
-  clearRun();
-  stopGameplay(scene);
-  scene.scene.start(SCENES.result, {
-    victory,
-    kills: run?.kills ?? 0,
-    gold: run?.goldEarned ?? 0,
-    floor: run?.floor ?? 1,
-    classId: run?.classId,
+/** 依階段切換畫面 */
+export function attachRouter(game: Phaser.Game) {
+  net.on('phase', (phase: Phase) => {
+    if (phase === 'lobby') switchTo(game, SCENES.lobby);
+    else if (phase === 'play') switchTo(game, SCENES.map, { mode: 'intro' });
+    else if (phase === 'result') switchTo(game, SCENES.result);
   });
-  session.run = null;
+  net.on('reject', (reason: string) => switchTo(game, SCENES.menu, { message: reason === 'full' ? 'net.full' : 'net.inProgress' }));
+  net.on('closed', () => switchTo(game, SCENES.menu, { message: 'net.hostClosed' }));
 }

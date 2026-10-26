@@ -3,19 +3,20 @@ import { generateFloor } from './mapGen';
 import { computeStats } from './stats';
 import { EQUIP_SLOTS, type ClassId, type EquipSlot, type FloorMap, type PotionId } from './types';
 
-export const RUN_STATE_VERSION = 3;
+export const RUN_STATE_VERSION = 4;
 
-/** 一局遊戲的狀態，也是存檔內容 */
-export interface RunState {
-  version: number;
+/** 每位玩家自己的進度（裝備、金幣、藥水等都是各自的） */
+export interface PlayerRun {
+  id: string;
+  name: string;
   classId: ClassId;
-  floor: number;
-  seed: number;
+  /** 多人時用來區分玩家的顏色 */
+  color: number;
   gold: number;
-  /** 本局累計擊殺數 */
-  kills: number;
   /** 本局累計獲得金幣（結算用） */
   goldEarned: number;
+  /** 自己最後一擊的擊殺數 */
+  kills: number;
   equipment: Record<EquipSlot, string | null>;
   /** 藥水欄（格數見 PLAYER_CONFIG.potionSlots），開局為空 */
   potions: (PotionId | null)[];
@@ -23,49 +24,85 @@ export interface RunState {
   unlockedPotions: PotionId[];
   /** 已接受的祭壇契約 id */
   altarEffects: string[];
+  /** 自己已使用過的特殊格（寶箱、休息點、祭壇），每人各用一次 */
+  usedCells: number[];
+  autoAttack: boolean;
   hp: number;
   mp: number;
+}
+
+/** 一局遊戲的狀態，也是存檔內容（由房主保存） */
+export interface RunState {
+  version: number;
+  floor: number;
+  seed: number;
   map: FloorMap;
   currentRoomId: number;
+  /** 全隊擊殺數 */
+  kills: number;
+  players: Record<string, PlayerRun>;
+  /** 房主的玩家 id（接續存檔時用來認回自己） */
+  hostId: string;
+}
+
+export interface NewPlayer {
+  id: string;
+  name: string;
+  classId: ClassId;
+  color: number;
+  autoAttack: boolean;
 }
 
 export function emptyEquipment(): Record<EquipSlot, string | null> {
   return Object.fromEntries(EQUIP_SLOTS.map((s) => [s, null])) as Record<EquipSlot, string | null>;
 }
 
-export function createRun(classId: ClassId, seed: number): RunState {
+export function createPlayerRun(p: NewPlayer): PlayerRun {
   const equipment = emptyEquipment();
-  const stats = computeStats(classId, equipment);
-  const floor = 1;
-  const map = generateFloor({ floor, seed });
+  const stats = computeStats(p.classId, equipment);
   return {
-    version: RUN_STATE_VERSION,
-    classId,
-    floor,
-    seed,
+    ...p,
     gold: PLAYER_CONFIG.startGold,
-    kills: 0,
     goldEarned: 0,
+    kills: 0,
     equipment,
     potions: Array(PLAYER_CONFIG.potionSlots).fill(null),
     unlockedPotions: [],
     altarEffects: [],
+    usedCells: [],
     hp: stats.maxHp,
     mp: stats.maxMp,
+  };
+}
+
+export function createRun(players: NewPlayer[], seed: number, hostId: string): RunState {
+  const floor = 1;
+  const map = generateFloor({ floor, seed });
+  return {
+    version: RUN_STATE_VERSION,
+    floor,
+    seed,
     map,
     currentRoomId: map.startId,
+    kills: 0,
+    players: Object.fromEntries(players.map((p) => [p.id, createPlayerRun(p)])),
+    hostId,
   };
 }
 
 /**
  * 讀檔時把舊版本存檔轉成目前格式，無法轉換時回傳 null（主選單就不會出現「繼續」）。
- * v3 重做了裝備與商店，舊存檔的裝備 id 已不存在，因此 v1、v2 存檔直接作廢。
+ * v4 改為多人格式，舊存檔直接作廢。
  */
 export function migrateRun(data: RunState): RunState | null {
   return data.version === RUN_STATE_VERSION ? data : null;
 }
 
-export function addGold(run: RunState, amount: number) {
-  run.gold += amount;
-  run.goldEarned += amount;
+export function addGold(p: PlayerRun, amount: number) {
+  p.gold += amount;
+  p.goldEarned += amount;
+}
+
+export function playerStats(p: PlayerRun) {
+  return computeStats(p.classId, p.equipment, p.altarEffects);
 }

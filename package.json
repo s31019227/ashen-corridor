@@ -12,6 +12,7 @@
     "i18n:sync": "node scripts/sync-i18n.mjs"
   },
   "dependencies": {
+    "peerjs": "^1.5.4",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

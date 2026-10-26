@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_CONFIG } from '../config/game';
 import { THEME } from '../config/theme';
 import { AVAILABLE_LOCALES, LOCALES, getLocale, t, type Locale } from '../i18n';
+import { net } from '../net/client';
 import { session } from '../state/session';
 import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
@@ -31,7 +32,7 @@ export class SettingsScene extends Phaser.Scene {
     addBackdrop(this, 0.8);
     addPanel(this, width / 2, height / 2, 600, inGame ? 460 : 380);
     const top = height / 2 - (inGame ? 190 : 150);
-    addText(this, width / 2, top, t(inGame ? 'hud.pause' : 'settings.title'), 30).setOrigin(0.5);
+    addText(this, width / 2, top, t(inGame ? (net.isMultiplayer ? 'hud.menu' : 'hud.pause') : 'settings.title'), 30).setOrigin(0.5);
 
     // 自動普攻改由遊戲中的攻擊鍵切換，這裡不再提供
     // 語言（目前只有中文可選）
@@ -51,7 +52,7 @@ export class SettingsScene extends Phaser.Scene {
 
     if (inGame) {
       new Button(this, width / 2, top + 240, t('settings.resume'), () => this.close(), { width: 300, color: THEME.accent });
-      new Button(this, width / 2, top + 310, t('settings.toMenu'), () => goToMenu(this), { width: 300 });
+      new Button(this, width / 2, top + 310, t(net.isMultiplayer ? 'settings.leaveRoom' : 'settings.toMenu'), () => goToMenu(this.game), { width: 300 });
       this.input.keyboard?.on('keydown-P', () => this.close());
     } else {
       new Button(this, width / 2, top + 250, t('settings.back'), () => this.close(), { width: 200 });
@@ -61,7 +62,7 @@ export class SettingsScene extends Phaser.Scene {
 
   private close() {
     this.scene.stop();
-    this.scene.resume(this.from);
-    if (this.from === SCENES.room) this.scene.resume(SCENES.ui);
+    if (this.from === SCENES.room) net.popUi();
+    else this.scene.resume(this.from);
   }
 }

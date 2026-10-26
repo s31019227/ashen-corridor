@@ -1,169 +1,122 @@
 import Phaser from 'phaser';
-import { BOSS_ID, ENEMIES, MOB_POOL } from '../config/enemies';
-import { GAME_CONFIG } from '../config/game';
 import { getAltarEffect } from '../config/altar';
-import { ROOM_EVENT_CONFIG } from '../config/map';
+import { CLASSES } from '../config/classes';
+import { ENEMIES } from '../config/enemies';
+import { GAME_CONFIG } from '../config/game';
+import { PLAYER_CONFIG } from '../config/player';
 import { ROOM_COLORS, THEME } from '../config/theme';
-import { difficultyLevel, difficultyScale, type DifficultyScale } from '../core/difficulty';
-import { markCleared, neighbors } from '../core/mapGen';
-import { Rng, randomSeed } from '../core/rng';
-import { canTransition, type RoomBounds } from '../core/roomTransition';
-import { addGold, type RunState } from '../core/runState';
-import { DIRS, OPPOSITE_DIR, type Dir, type MapCell } from '../core/types';
-import { Enemy } from '../entities/Enemy';
-import { Player } from '../entities/Player';
-import { t } from '../i18n';
+import { neighbors } from '../core/mapGen';
+import { DIRS } from '../core/types';
+import { t, tEvent } from '../i18n';
+import { net } from '../net/client';
+import { attackRange } from '../sim/combat';
+import type { GameEvent, TelegraphEntity } from '../sim/types';
+import { INTERACT_POS, ROOM_BOUNDS, isCombatRoom } from '../sim/world';
 import { session } from '../state/session';
-import { CombatSystem } from '../systems/CombatSystem';
-import { EnemySystem } from '../systems/EnemySystem';
 import { inputHub, KeyboardInput } from '../systems/InputSystem';
-import { usePotion } from '../systems/PotionSystem';
-import { useSkill } from '../systems/SkillSystem';
 import { formatAltarEffect } from '../ui/statText';
 import { floatText } from '../ui/text';
-import { endRun } from './flow';
 import { SCENES } from './keys';
-
-interface RoomData {
-  /** 從哪個方向進來（玩家剛才往哪個方向走） */
-  fromDir?: Dir;
-}
-
-interface Interactable {
-  view: Phaser.GameObjects.Container;
-  x: number;
-  y: number;
-  armed: boolean;
-  trigger: () => void;
-}
 
 export const TOAST_EVENT = 'toast';
 
-/** 單一格子（房間）內的場景：移動、戰鬥、互動、換格 */
-export class RoomScene extends Phaser.Scene {
-  run!: RunState;
-  cell!: MapCell;
-  player!: Player;
-  enemies: Enemy[] = [];
-  readonly bounds: RoomBounds;
+interface PlayerView {
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Arc;
+  facing: Phaser.GameObjects.Triangle;
+  name: Phaser.GameObjects.Text;
+}
 
-  private combat!: CombatSystem;
-  private enemySystem!: EnemySystem;
+interface EnemyView {
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Arc;
+  hpFill: Phaser.GameObjects.Rectangle;
+  hpWidth: number;
+}
+
+const R = PLAYER_CONFIG.radius;
+
+/**
+ * 單一格子的畫面。遊戲邏輯由房主的模擬負責（sim/），這裡只做三件事：
+ * 收集輸入送給房主、把模擬狀態畫出來、把一次性事件變成特效與訊息。
+ */
+export class RoomScene extends Phaser.Scene {
+  private roomId = -1;
   private keyboard!: KeyboardInput;
   private doors!: Phaser.GameObjects.Graphics;
-  private lockRing!: Phaser.GameObjects.Graphics;
-  private interactable: Interactable | null = null;
-  private transitioning = false;
-  private finished = false;
-  private nextEnemyId = 1;
-  /** 進入此格時的難度（此格已計入探索） */
-  private difficulty: DifficultyScale = difficultyScale(0);
+  private overlay!: Phaser.GameObjects.Graphics;
+  private interactable: Phaser.GameObjects.Container | null = null;
+  private players = new Map<string, PlayerView>();
+  private enemies = new Map<number, EnemyView>();
+  private projectiles = new Map<number, Phaser.GameObjects.Arc>();
+  private lastCleared = false;
+  private leaving = false;
 
   constructor() {
     super(SCENES.room);
-    const m = GAME_CONFIG.room.margin;
-    this.bounds = { left: m, top: m, right: GAME_CONFIG.width - m, bottom: GAME_CONFIG.height - m };
   }
 
-  get isCombatRoom() {
-    return (this.cell.type === 'mob' || this.cell.type === 'boss') && !this.cell.cleared;
-  }
-
-  /** 敵人全部清除（非戰鬥格永遠為 true） */
-  get cleared() {
-    return !this.isCombatRoom;
-  }
-
-  get aliveEnemies() {
-    return this.enemies.filter((e) => e.alive);
-  }
-
-  create(data: RoomData) {
-    const run = session.run;
-    if (!run) {
+  create() {
+    const run = net.run;
+    const world = net.world;
+    if (!run || !world) {
       this.scene.start(SCENES.menu);
       return;
     }
-    this.run = run;
-    this.cell = run.map.cells[run.currentRoomId];
-    this.cell.visited = true;
-    this.difficulty = difficultyScale(difficultyLevel(run.map));
-    this.enemies = [];
+    this.roomId = world.roomId;
+    this.players = new Map();
+    this.enemies = new Map();
+    this.projectiles = new Map();
     this.interactable = null;
-    this.transitioning = false;
-    this.finished = false;
-    this.nextEnemyId = 1;
+    this.leaving = false;
 
     this.drawRoom();
-    const spawn = this.spawnPoint(data.fromDir);
-    this.player = new Player(this, run, spawn.x, spawn.y);
-    this.player.importCooldowns(session.cooldowns);
-
-    this.combat = new CombatSystem(this, this.player, () => this.enemies, (e) => this.onEnemyKilled(e));
-    this.enemySystem = new EnemySystem(this, this.player, this.bounds);
-    this.keyboard = new KeyboardInput(this);
-    this.lockRing = this.add.graphics().setDepth(4);
-
-    if (this.isCombatRoom) this.spawnEnemies();
-    this.createInteractable();
+    this.doors = this.add.graphics().setDepth(1);
+    this.overlay = this.add.graphics().setDepth(4);
+    this.lastCleared = !isCombatRoom(run, this.roomId);
     this.drawDoors();
+    this.createInteractable();
+    this.keyboard = new KeyboardInput(this);
 
-    // 從暫停（商店、設定、地圖）回來時：裝備可能變了，重新計算數值
-    // （scene.events 在 restart 之間不會清空，所以要在 shutdown 時移除）
-    this.events.on(Phaser.Scenes.Events.RESUME, this.onResume, this);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.events.off(Phaser.Scenes.Events.RESUME, this.onResume, this);
-      this.combat.destroy();
-      this.enemySystem.clear();
-    });
-
+    const onGame = (e: GameEvent) => this.onGameEvent(e);
+    net.on('game', onGame);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => net.off('game', onGame));
     this.cameras.main.fadeIn(GAME_CONFIG.room.transitionFadeMs, 0, 0, 0);
-    session.save();
   }
 
-  private onResume() {
-    this.player.refreshStats();
-    inputHub.consume();
-  }
-
-  // ───────────────────────── 畫面 ─────────────────────────
+  // ───────────────────────── 靜態畫面 ─────────────────────────
 
   private drawRoom() {
-    const b = this.bounds;
+    const b = ROOM_BOUNDS;
     const w = b.right - b.left;
     const h = b.bottom - b.top;
     this.add.rectangle(GAME_CONFIG.width / 2, GAME_CONFIG.height / 2, GAME_CONFIG.width, GAME_CONFIG.height, THEME.wall);
 
     // 地板：點擊空地解除鎖定
     const floor = this.add.rectangle(b.left, b.top, w, h, THEME.floor).setOrigin(0).setInteractive();
-    floor.on('pointerdown', () => this.combat.unlock());
+    floor.on('pointerdown', () => net.act({ k: 'unlock' }));
 
     const grid = this.add.graphics();
     grid.lineStyle(1, THEME.floorGrid, 1);
     for (let x = b.left; x <= b.right; x += 64) grid.lineBetween(x, b.top, x, b.bottom);
     for (let y = b.top; y <= b.bottom; y += 64) grid.lineBetween(b.left, y, b.right, y);
 
-    // 格子類型的淡色標示
-    this.add
-      .rectangle(b.left, b.top, w, h)
-      .setOrigin(0)
-      .setStrokeStyle(4, ROOM_COLORS[this.cell.type], 0.6);
-
-    this.doors = this.add.graphics().setDepth(1);
+    const cell = net.run!.map.cells[this.roomId];
+    this.add.rectangle(b.left, b.top, w, h).setOrigin(0).setStrokeStyle(4, ROOM_COLORS[cell.type], 0.6);
   }
 
   /** 有相鄰格的邊畫出通道；清空前為紅色（關閉），清空後為綠色（開啟） */
   private drawDoors() {
     const g = this.doors;
     g.clear();
-    const b = this.bounds;
-    const n = neighbors(this.run.map, this.cell.id);
-    const color = this.cleared ? THEME.doorOpen : THEME.doorClosed;
+    const b = ROOM_BOUNDS;
+    const n = neighbors(net.run!.map, this.roomId);
+    const cleared = this.lastCleared;
     const len = 160;
     const thick = 10;
     const cx = (b.left + b.right) / 2;
     const cy = (b.top + b.bottom) / 2;
-    g.fillStyle(color, 0.9);
+    g.fillStyle(cleared ? THEME.doorOpen : THEME.doorClosed, 0.9);
     for (const dir of DIRS) {
       if (n[dir] === undefined) continue;
       if (dir === 'up') g.fillRect(cx - len / 2, b.top - thick, len, thick);
@@ -172,7 +125,7 @@ export class RoomScene extends Phaser.Scene {
       if (dir === 'right') g.fillRect(b.right, cy - len / 2, thick, len);
     }
     // 清空後整條邊都可以換格，用細線提示
-    if (this.cleared) {
+    if (cleared) {
       g.lineStyle(2, THEME.doorOpen, 0.35);
       if (n.up !== undefined) g.lineBetween(b.left, b.top, b.right, b.top);
       if (n.down !== undefined) g.lineBetween(b.left, b.bottom, b.right, b.bottom);
@@ -181,229 +134,214 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
-  private spawnPoint(fromDir?: Dir) {
-    const b = this.bounds;
-    const cx = (b.left + b.right) / 2;
-    const cy = (b.top + b.bottom) / 2;
-    const off = GAME_CONFIG.room.entrySpawnOffset;
-    if (!fromDir) return { x: cx, y: cy + 120 };
-    // 往右走進來 → 出現在新格子的左側，依此類推
-    switch (OPPOSITE_DIR[fromDir]) {
-      case 'up':
-        return { x: cx, y: b.top + off };
-      case 'down':
-        return { x: cx, y: b.bottom - off };
-      case 'left':
-        return { x: b.left + off, y: cy };
-      case 'right':
-        return { x: b.right - off, y: cy };
-    }
-  }
-
-  // ───────────────────────── 敵人 ─────────────────────────
-
-  private spawnEnemies() {
-    const rng = new Rng(randomSeed());
-    const b = this.bounds;
-    if (this.cell.type === 'boss') {
-      const far = { x: (b.left + b.right) / 2, y: (b.top + b.bottom) / 2 };
-      this.addEnemy(BOSS_ID, far.x, far.y);
-      return;
-    }
-    const { enemyCountMin, enemyCountMax } = ROOM_EVENT_CONFIG.mob;
-    const count = rng.int(enemyCountMin, enemyCountMax);
-    for (let i = 0; i < count; i++) {
-      const def = rng.weighted(MOB_POOL);
-      let x = 0;
-      let y = 0;
-      for (let tries = 0; tries < 30; tries++) {
-        x = rng.int(b.left + 60, b.right - 60);
-        y = rng.int(b.top + 60, b.bottom - 60);
-        if (Math.hypot(x - this.player.x, y - this.player.y) >= GAME_CONFIG.room.enemySpawnMinDistance) break;
-      }
-      this.addEnemy(def.id, x, y);
-    }
-  }
-
-  private addEnemy(defId: string, x: number, y: number) {
-    const enemy = new Enemy(this, this.nextEnemyId++, ENEMIES[defId], x, y, this.difficulty);
-    enemy.view.on(
-      'pointerdown',
-      (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
-        e.stopPropagation();
-        if (enemy.alive) this.combat.lock(enemy.id);
-      },
-    );
-    this.enemies.push(enemy);
-  }
-
-  private onEnemyKilled(enemy: Enemy) {
-    const [min, max] = enemy.def.goldDrop;
-    const gold = Math.round(Phaser.Math.Between(min, max) * this.difficulty.gold);
-    addGold(this.run, gold);
-    this.run.kills++;
-    floatText(this, enemy.x, enemy.y, `+${gold}G`, THEME.textGold);
-    enemy.destroy();
-  }
-
-  // ───────────────────────── 互動物件 ─────────────────────────
-
   private createInteractable() {
-    const type = this.cell.type;
-    const handlers: Partial<Record<MapCell['type'], () => void>> = {
-      start: () => this.openShop(),
-      shop: () => this.openShop(),
-      altar: () => this.useAltar(),
-      treasure: () => this.openTreasure(),
-      rest: () => this.useRest(),
-    };
-    const trigger = handlers[type];
-    if (!trigger) return;
-
-    const x = (this.bounds.left + this.bounds.right) / 2;
-    const y = (this.bounds.top + this.bounds.bottom) / 2 - 60;
-    const used = this.cell.cleared && type !== 'start' && type !== 'shop';
+    const type = net.run!.map.cells[this.roomId].type;
+    if (!['start', 'shop', 'altar', 'treasure', 'rest'].includes(type)) return;
     const shape =
       type === 'start' || type === 'shop'
         ? this.add.rectangle(0, 0, 44, 44, ROOM_COLORS[type])
         : type === 'treasure'
           ? this.add.rectangle(0, 0, 40, 30, ROOM_COLORS[type])
           : this.add.circle(0, 0, 24, ROOM_COLORS[type]);
-    shape.setStrokeStyle(2, 0xe8e0c8).setAlpha(used ? 0.35 : 1);
+    shape.setStrokeStyle(2, 0xe8e0c8);
     const label = this.add
       .text(0, 38, t(`room.${type}`), { fontFamily: THEME.font, fontSize: '16px', color: THEME.text })
       .setOrigin(0.5);
-    const view = this.add.container(x, y, [shape, label]).setDepth(3);
+    const view = this.add.container(INTERACT_POS.x, INTERACT_POS.y, [shape, label]).setDepth(3);
     view.setInteractive(new Phaser.Geom.Circle(0, 0, 36), Phaser.Geom.Circle.Contains);
     view.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
-      trigger();
+      net.act({ k: 'interact' });
     });
-    this.interactable = { view, x, y, armed: true, trigger };
+    this.interactable = view;
   }
 
-  private updateInteractable() {
-    const it = this.interactable;
-    if (!it) return;
-    const d = Math.hypot(this.player.x - it.x, this.player.y - it.y);
-    const r = GAME_CONFIG.room.interactRadius;
-    if (it.armed && d <= r) {
-      it.armed = false;
-      it.trigger();
-    } else if (!it.armed && d > r + 30) {
-      it.armed = true;
-    }
-  }
-
-  private markInteractableUsed() {
-    this.interactable?.view.list.forEach((o) => (o as Phaser.GameObjects.Shape).setAlpha?.(0.35));
-  }
-
-  private openShop() {
-    this.scene.pause();
-    this.scene.launch(SCENES.shop, { mode: 'shop', cellId: this.cell.id });
-  }
-
-  /** 祭壇：先說明契約內容與代價，由玩家決定是否接受；拒絕的話之後還能回來 */
-  private useAltar() {
-    const effect = getAltarEffect(this.cell.altarEffect);
-    if (this.cell.cleared || !effect) {
-      this.toast(t('msg.altarSpent'), THEME.textDim);
-      return;
-    }
-    const cost = effect.goldCost;
-    const lines = [
-      t('altar.title', { name: t(effect.nameKey) }),
-      t('altar.effectLine', { effect: formatAltarEffect(effect) }),
-      cost > 0 ? t('altar.costLine', { cost }) : t('altar.freeLine'),
-      t('altar.duration'),
-    ];
-    this.scene.pause();
-    this.scene.launch(SCENES.dialog, {
-      message: lines.join('\n'),
-      confirmText: t('altar.confirm'),
-      cancelText: t('altar.cancel'),
-      onConfirm: () => {
-        if (this.run.gold < cost) {
-          this.toast(t('msg.altarNoGold', { cost }), THEME.textRed);
-          return;
-        }
-        this.run.gold -= cost;
-        this.run.altarEffects.push(effect.id);
-        this.player.refreshStats();
-        this.toast(t('msg.altarAccepted', { name: t(effect.nameKey) }), THEME.textGold);
-        this.cell.cleared = true;
-        this.markInteractableUsed();
-        this.syncRun();
-        session.save();
-      },
-    });
-  }
-
-  private openTreasure() {
-    if (this.cell.cleared) {
-      this.toast(t('msg.treasureEmpty'), THEME.textDim);
-      return;
-    }
-    const { goldMin, goldMax } = ROOM_EVENT_CONFIG.treasure;
-    const gold = Phaser.Math.Between(goldMin, goldMax);
-    addGold(this.run, gold);
-    this.cell.cleared = true;
-    this.markInteractableUsed();
-    floatText(this, this.interactable!.x, this.interactable!.y - 30, `+${gold}G`, THEME.textGold, 22);
-    this.toast(t('msg.treasureOpened', { gold }), THEME.textGold);
-    session.save();
-  }
-
-  private useRest() {
-    if (this.cell.cleared) {
-      this.toast(t('msg.restUsed'), THEME.textDim);
-      return;
-    }
-    const { hpPercent, mpPercent } = ROOM_EVENT_CONFIG.rest;
-    const p = this.player;
-    p.heal((p.stats.maxHp * hpPercent) / 100, (p.stats.maxMp * mpPercent) / 100);
-    this.cell.cleared = true;
-    this.markInteractableUsed();
-    this.toast(t('msg.rested'), THEME.textGreen);
-    this.syncRun();
-    session.save();
-  }
-
-  // ───────────────────────── 每幀更新 ─────────────────────────
+  // ───────────────────────── 事件 → 特效 ─────────────────────────
 
   toast(message: string, color: string = THEME.text) {
     this.game.events.emit(TOAST_EVENT, message, color);
   }
 
+  private onGameEvent(e: GameEvent) {
+    const mine = 'pid' in e && e.pid === net.myId;
+    switch (e.k) {
+      case 'dmg':
+        if (e.onPlayer) {
+          floatText(this, e.x, e.y, `-${e.v}`, THEME.textRed);
+          if (e.onPlayer === net.myId) this.cameras.main.shake(80, 0.004);
+        } else if (e.crit) floatText(this, e.x, e.y, `${e.v}!`, THEME.textGold, 22);
+        else floatText(this, e.x, e.y, `${e.v}`, THEME.text, 16);
+        break;
+      case 'heal': {
+        const pos = net.displayPos('player', e.pid);
+        if (!pos) break;
+        if (e.hp > 0) floatText(this, pos.x - 14, pos.y - 30, `+${e.hp}`, THEME.textGreen);
+        if (e.mp > 0) floatText(this, pos.x + 14, pos.y - 30, `+${e.mp}`, '#6a8ae0');
+        break;
+      }
+      case 'gold':
+        floatText(this, e.x, e.y, `+${e.v}G`, THEME.textGold);
+        break;
+      case 'slash':
+        this.drawSlash(e.x, e.y, e.angle, e.r);
+        break;
+      case 'boom':
+        this.flashTelegraph(e.tg);
+        break;
+      case 'kill': {
+        const v = this.enemies.get(e.id);
+        if (v) {
+          this.enemies.delete(e.id);
+          v.container.disableInteractive();
+          this.tweens.add({ targets: v.container, alpha: 0, scale: 0.6, duration: 250, onComplete: () => v.container.destroy() });
+        }
+        break;
+      }
+      case 'toast':
+        if (mine) this.toast(tEvent(e.key, e.params), e.color);
+        break;
+      case 'skill': {
+        const pr = net.run?.players[e.pid];
+        const pos = net.displayPos('player', e.pid);
+        if (!pr || !pos) break;
+        const def = CLASSES[pr.classId];
+        const skill = e.skillIndex < 3 ? def.skills[e.skillIndex] : def.ultimate;
+        floatText(this, pos.x, pos.y - 40, t(skill.nameKey), THEME.textGold, 20);
+        if (mine) this.toast(t('msg.skillNotImplemented', { name: t(skill.nameKey) }));
+        break;
+      }
+      case 'open':
+        if (mine) this.openUi(e.ui, e.cellId);
+        break;
+      case 'cleared':
+        this.lastCleared = true;
+        this.drawDoors();
+        break;
+      case 'revive':
+        if (mine) this.toast(t('msg.revived'), THEME.textGreen);
+        break;
+      case 'room':
+        this.changeRoom();
+        break;
+    }
+  }
+
+  private changeRoom() {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.cameras.main.fadeOut(GAME_CONFIG.room.transitionFadeMs, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => this.scene.restart());
+  }
+
+  private drawSlash(x: number, y: number, angle: number, r: number) {
+    const g = this.add.graphics().setDepth(9);
+    g.lineStyle(4, 0xe8e0c8, 0.9);
+    g.beginPath();
+    g.arc(x, y, r, angle - 0.7, angle + 0.7);
+    g.strokePath();
+    this.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() });
+  }
+
+  private paintTelegraph(g: Phaser.GameObjects.Graphics, tg: TelegraphEntity, outer: number, inner: number, fill: number, color: number) {
+    if (tg.shape === 'circle') {
+      g.fillStyle(color, outer).fillCircle(tg.x, tg.y, tg.size);
+      g.lineStyle(2, color, 0.7).strokeCircle(tg.x, tg.y, tg.size);
+      g.fillStyle(color, inner).fillCircle(tg.x, tg.y, tg.size * fill);
+      return;
+    }
+    g.save();
+    g.translateCanvas(tg.x, tg.y);
+    g.rotateCanvas(tg.angle);
+    g.fillStyle(color, outer).fillRect(0, -tg.size / 2, tg.length, tg.size);
+    g.lineStyle(2, color, 0.7).strokeRect(0, -tg.size / 2, tg.length, tg.size);
+    g.fillStyle(color, inner).fillRect(0, -tg.size / 2, tg.length * fill, tg.size);
+    g.restore();
+  }
+
+  private flashTelegraph(tg: TelegraphEntity) {
+    const g = this.add.graphics().setDepth(2);
+    this.paintTelegraph(g, tg, 0.5, 0.3, 1, 0xff6040);
+    this.tweens.add({ targets: g, alpha: 0, duration: 250, onComplete: () => g.destroy() });
+  }
+
+  // ───────────────────────── 介面 ─────────────────────────
+
+  private openOverlay(key: string, data: object) {
+    net.pushUi();
+    this.scene.launch(key, data);
+    this.scene.bringToTop(key);
+  }
+
+  private openUi(ui: 'shop' | 'altar', cellId: number) {
+    if (net.uiBlocked) return;
+    if (ui === 'shop') {
+      this.openOverlay(SCENES.shop, { mode: 'shop', cellId });
+      return;
+    }
+    const effect = getAltarEffect(net.run!.map.cells[cellId].altarEffect);
+    if (!effect) return;
+    const lines = [
+      t('altar.title', { name: t(effect.nameKey) }),
+      t('altar.effectLine', { effect: formatAltarEffect(effect) }),
+      effect.goldCost > 0 ? t('altar.costLine', { cost: effect.goldCost }) : t('altar.freeLine'),
+      t('altar.duration'),
+    ];
+    this.openOverlay(SCENES.dialog, {
+      message: lines.join('\n'),
+      confirmText: t('altar.confirm'),
+      cancelText: t('altar.cancel'),
+      onConfirm: () => net.act({ k: 'altar', cellId }),
+    });
+  }
+
+  openMapView() {
+    this.openOverlay(SCENES.map, { mode: 'view' });
+  }
+
+  openPause() {
+    this.openOverlay(SCENES.settings, { from: SCENES.room });
+  }
+
+  /** 攻擊鍵：切換自動普攻（開 = 自動普攻，關 = 不普攻） */
+  toggleAutoAttack() {
+    const on = !(net.me?.autoAttack ?? true);
+    session.updateSettings({ autoAttack: on });
+    net.act({ k: 'auto', on });
+    this.toast(t(on ? 'hud.autoOn' : 'hud.autoOff'), on ? THEME.textGreen : THEME.textDim);
+  }
+
+  unlockTarget() {
+    net.act({ k: 'unlock' });
+  }
+
   private handleActions() {
-    for (const action of inputHub.consume()) {
+    const actions = inputHub.consume();
+    if (net.uiBlocked) return; // 介面開著時忽略遊戲按鍵
+    for (const action of actions) {
       switch (action) {
         case 'skill1':
         case 'skill2':
         case 'skill3':
-          useSkill(this, this.player, Number(action.slice(-1)) - 1, (m, c) => this.toast(m, c));
+          net.act({ k: 'skill', i: Number(action.slice(-1)) - 1 });
           break;
         case 'ultimate':
-          useSkill(this, this.player, 3, (m, c) => this.toast(m, c));
+          net.act({ k: 'skill', i: 3 });
           break;
         case 'potion1':
         case 'potion2':
         case 'potion3':
         case 'potion4':
         case 'potion5':
-          if (Number(action.slice(-1)) > this.run.potions.length) break; // 超出藥水欄格數的按鍵不作用
-          usePotion(this, this.run, this.player, Number(action.slice(-1)) - 1, (m, c) => this.toast(m, c));
+          net.act({ k: 'potion', i: Number(action.slice(-1)) - 1 });
           break;
         case 'attack':
           this.toggleAutoAttack();
           break;
         case 'unlock':
-          this.combat.unlock();
+          this.unlockTarget();
           break;
         case 'equipment':
-          this.scene.pause();
-          this.scene.launch(SCENES.shop, { mode: 'equipment' });
+          this.openOverlay(SCENES.shop, { mode: 'equipment' });
           return;
         case 'map':
           this.openMapView();
@@ -415,112 +353,153 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
-  openMapView() {
-    this.syncRun();
-    this.scene.pause();
-    this.scene.pause(SCENES.ui);
-    this.scene.launch(SCENES.map, { mode: 'view' });
-    this.scene.bringToTop(SCENES.map);
-  }
-
-  openPause() {
-    this.syncRun();
-    session.save();
-    this.scene.pause();
-    this.scene.pause(SCENES.ui);
-    this.scene.launch(SCENES.settings, { from: SCENES.room });
-  }
-
-  /** 攻擊鍵：切換自動普攻（開 = 自動普攻，關 = 不普攻） */
-  toggleAutoAttack() {
-    const on = !session.settings.autoAttack;
-    session.updateSettings({ autoAttack: on });
-    this.toast(t(on ? 'hud.autoOn' : 'hud.autoOff'), on ? THEME.textGreen : THEME.textDim);
-  }
-
-  /** 解除鎖定（HUD 按鈕使用） */
-  unlockTarget() {
-    this.combat.unlock();
-  }
+  // ───────────────────────── 每幀 ─────────────────────────
 
   update(_time: number, deltaMs: number) {
-    if (!this.player || this.transitioning || this.finished) return;
-    const dt = Math.min(deltaMs / 1000, 0.05);
-
-    this.handleActions();
-    if (!this.scene.isActive()) return; // 動作中開啟了商店等介面
-
-    this.player.move(this.keyboard.moveVector(), dt, this.bounds);
-    this.player.update(dt);
-    this.combat.update(dt);
-    this.enemySystem.update(this.enemies, dt);
-    this.drawLockRing();
-    this.updateInteractable();
-    this.syncRun();
-
-    if (this.player.dead) {
-      this.finish(false);
+    const world = net.world;
+    const run = net.run;
+    if (!world || !run || this.leaving) return;
+    if (world.roomId !== this.roomId) {
+      this.changeRoom();
       return;
     }
-    this.checkCleared();
-    this.checkTransition();
+    const dt = Math.min(deltaMs / 1000, 0.05);
+    this.handleActions();
+    const mv = this.keyboard.moveVector();
+    net.setMove(mv.x, mv.y);
+    net.updatePrediction(dt);
+
+    if (!this.lastCleared && !isCombatRoom(run, this.roomId)) {
+      this.lastCleared = true;
+      this.drawDoors();
+    }
+    this.syncPlayers();
+    this.syncEnemies();
+    this.syncProjectiles();
+    this.drawOverlay();
+
+    // 自己用過的寶箱、休息點、祭壇變暗
+    const used = net.me?.usedCells.includes(this.roomId) ?? false;
+    this.interactable?.setAlpha(used ? 0.35 : 1);
   }
 
-  private drawLockRing() {
-    const g = this.lockRing;
+  private syncPlayers() {
+    const world = net.world!;
+    const run = net.run!;
+    for (const [id, v] of this.players) {
+      if (!world.players[id]?.connected) {
+        v.container.destroy();
+        this.players.delete(id);
+      }
+    }
+    for (const p of Object.values(world.players)) {
+      if (!p.connected) continue;
+      const pr = run.players[p.id];
+      if (!pr) continue;
+      let v = this.players.get(p.id);
+      if (!v) {
+        const isMe = p.id === net.myId;
+        const body = this.add.circle(0, 0, R, CLASSES[pr.classId].color).setStrokeStyle(isMe ? 3 : 2, pr.color);
+        // Triangle 的頂點座標以左上角為原點，要用非負座標才會以 (x, y) 為中心
+        const facing = this.add.triangle(R + 6, 0, 0, 0, 0, 12, 10, 6, pr.color);
+        const name = this.add
+          .text(0, -R - 14, net.isMultiplayer ? pr.name : '', { fontFamily: THEME.font, fontSize: '13px', color: THEME.text })
+          .setOrigin(0.5);
+        const container = this.add.container(p.x, p.y, [body, facing, name]).setDepth(isMe ? 11 : 10);
+        v = { container, body, facing, name };
+        this.players.set(p.id, v);
+      }
+      const pos = net.displayPos('player', p.id) ?? p;
+      v.container.setPosition(pos.x, pos.y);
+      const angle = Math.atan2(p.fy, p.fx);
+      v.facing.setPosition(Math.cos(angle) * (R + 6), Math.sin(angle) * (R + 6)).setRotation(angle);
+      v.body.setAlpha(p.dead ? 0.25 : p.invuln > 0 ? 0.6 : 1);
+      v.facing.setVisible(!p.dead);
+    }
+  }
+
+  private syncEnemies() {
+    const world = net.world!;
+    const alive = new Set(world.enemies.map((e) => e.id));
+    for (const [id, v] of this.enemies) {
+      if (!alive.has(id)) {
+        v.container.destroy();
+        this.enemies.delete(id);
+      }
+    }
+    for (const e of world.enemies) {
+      let v = this.enemies.get(e.id);
+      const def = ENEMIES[e.defId];
+      if (!v) {
+        const r = def.radius;
+        const hpWidth = Math.max(30, r * 2);
+        const body = this.add.circle(0, 0, r, def.color).setStrokeStyle(2, 0x1a0a0a);
+        const hpBg = this.add.rectangle(-hpWidth / 2, -r - 10, hpWidth, 5, THEME.barBg).setOrigin(0, 0.5);
+        const hpFill = this.add.rectangle(-hpWidth / 2, -r - 10, hpWidth, 5, THEME.hp).setOrigin(0, 0.5);
+        const container = this.add.container(e.x, e.y, [body, hpBg, hpFill]).setDepth(5);
+        // 點擊範圍比身體大一點，手機比較好點
+        container.setInteractive(new Phaser.Geom.Circle(0, 0, r + 10), Phaser.Geom.Circle.Contains);
+        const id = e.id;
+        container.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
+          ev.stopPropagation();
+          net.act({ k: 'lock', id });
+        });
+        v = { container, body, hpFill, hpWidth };
+        this.enemies.set(e.id, v);
+      }
+      const pos = net.displayPos('enemy', e.id) ?? e;
+      v.container.setPosition(pos.x, pos.y);
+      const width = v.hpWidth * (e.hp / e.maxHp);
+      if (width < v.hpFill.width) {
+        // 受傷時閃白
+        const body = v.body;
+        body.setFillStyle(0xffffff);
+        this.time.delayedCall(60, () => body.active && body.setFillStyle(def.color));
+      }
+      v.hpFill.width = width;
+    }
+  }
+
+  private syncProjectiles() {
+    const world = net.world!;
+    const ids = new Set(world.projectiles.map((p) => p.id));
+    for (const [id, v] of this.projectiles) {
+      if (!ids.has(id)) {
+        v.destroy();
+        this.projectiles.delete(id);
+      }
+    }
+    for (const p of world.projectiles) {
+      let v = this.projectiles.get(p.id);
+      if (!v) {
+        v = this.add.circle(p.x, p.y, 5, p.color).setStrokeStyle(1, 0xffffff).setDepth(8);
+        this.projectiles.set(p.id, v);
+      }
+      const pos = net.displayPos('proj', p.id) ?? p;
+      v.setPosition(pos.x, pos.y);
+    }
+  }
+
+  /** 紅色預警區、鎖定圈、普攻範圍 */
+  private drawOverlay() {
+    const g = this.overlay;
     g.clear();
-    const p = this.player;
-    const locked = this.enemies.find((e) => e.id === p.lockedId && e.alive);
-    if (locked) {
-      g.lineStyle(3, THEME.lockRing, 1).strokeCircle(locked.x, locked.y, locked.radius + 8);
+    const world = net.world!;
+    const since = net.sinceSnap;
+    for (const tg of world.telegraphs) {
+      this.paintTelegraph(g, tg, 0.12, 0.3, Math.min(1, (tg.elapsed + since) / tg.warnTime), THEME.telegraph);
     }
-    const target = this.enemies.find((e) => e.id === p.targetId && e.alive);
-    if (target && target !== locked) {
-      g.lineStyle(1, THEME.lockRing, 0.5).strokeCircle(target.x, target.y, target.radius + 5);
-    }
-    // 普攻範圍提示
-    g.lineStyle(1, 0xffffff, 0.06).strokeCircle(p.x, p.y, p.radius + p.attackRange);
-  }
-
-  private checkCleared() {
-    if (!this.isCombatRoom || this.aliveEnemies.length > 0 || this.enemies.length === 0) return;
-    const wasBoss = this.cell.type === 'boss';
-    markCleared(this.run.map, this.cell.id);
-    this.enemySystem.clear();
-    this.drawDoors();
-    this.toast(t('hud.roomCleared'), THEME.textGreen);
-    session.save();
-    if (wasBoss) this.finish(true);
-  }
-
-  private checkTransition() {
-    const dir = canTransition([this.player], {
-      cleared: this.cleared,
-      bounds: this.bounds,
-      threshold: GAME_CONFIG.room.edgeThreshold + this.player.radius,
-      neighbors: neighbors(this.run.map, this.cell.id),
-    });
-    if (!dir) return;
-    const next = neighbors(this.run.map, this.cell.id)[dir]!;
-    this.transitioning = true;
-    session.cooldowns = this.player.exportCooldowns();
-    this.syncRun();
-    this.run.currentRoomId = next;
-    this.cameras.main.fadeOut(GAME_CONFIG.room.transitionFadeMs, 0, 0, 0);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.restart({ fromDir: dir } satisfies RoomData);
-    });
-  }
-
-  private finish(victory: boolean) {
-    this.finished = true;
-    this.syncRun();
-    this.time.delayedCall(victory ? 1200 : 800, () => endRun(this, victory));
-  }
-
-  private syncRun() {
-    if (!this.player) return;
-    this.run.hp = Math.round(this.player.hp);
-    this.run.mp = Math.round(this.player.mp);
+    const me = net.meEntity;
+    if (!me || me.dead) return;
+    const ring = (id: number | null, width: number, alpha: number, pad: number) => {
+      const e = world.enemies.find((en) => en.id === id);
+      if (!e) return;
+      const pos = net.displayPos('enemy', e.id) ?? e;
+      g.lineStyle(width, THEME.lockRing, alpha).strokeCircle(pos.x, pos.y, ENEMIES[e.defId].radius + pad);
+    };
+    ring(me.lockedId, 3, 1, 8);
+    if (me.targetId !== me.lockedId) ring(me.targetId, 1, 0.5, 5);
+    const pos = net.displayPos('player', me.id) ?? me;
+    g.lineStyle(1, 0xffffff, 0.06).strokeCircle(pos.x, pos.y, R + attackRange({ run: net.run!, world, moves: {}, events: [] }, me));
   }
 }

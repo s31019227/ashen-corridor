@@ -5,6 +5,9 @@ import { t } from './i18n';
 import './state/session';
 import { MenuScene } from './scenes/MenuScene';
 import { ClassSelectScene } from './scenes/ClassSelectScene';
+import { LobbyScene } from './scenes/LobbyScene';
+import { attachRouter } from './scenes/flow';
+import { net } from './net/client';
 import { MapScene } from './scenes/MapScene';
 import { RoomScene } from './scenes/RoomScene';
 import { UIScene } from './scenes/UIScene';
@@ -27,14 +30,19 @@ const game = new Phaser.Game({
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  dom: {
+    createContainer: true, // 房間代碼、名字輸入框
+  },
   input: {
     activePointers: 4, // 同時使用搖桿與技能按鈕
   },
   render: {
     antialias: true,
   },
-  scene: [MenuScene, ClassSelectScene, MapScene, RoomScene, UIScene, ShopScene, DialogScene, SettingsScene, ResultScene],
+  scene: [MenuScene, ClassSelectScene, LobbyScene, MapScene, RoomScene, UIScene, ShopScene, DialogScene, SettingsScene, ResultScene],
 });
 
+attachRouter(game);
+
 // 開發模式下方便在瀏覽器 console 檢查狀態
-if (import.meta.env.DEV) (window as unknown as { __game: Phaser.Game }).__game = game;
+if (import.meta.env.DEV) Object.assign(window, { __game: game, __net: net });

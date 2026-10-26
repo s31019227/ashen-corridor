@@ -6,11 +6,12 @@ import { GAME_CONFIG } from '../config/game';
 import { POTIONS } from '../config/potions';
 import { potionItemId } from '../config/shop';
 import { THEME } from '../config/theme';
-import { buyItem, carryPotion, isCarried, isOwned, resolveShopItem, type BuyResult, type ShopItem } from '../core/inventory';
+import { isCarried, isOwned, resolveShopItem, type ShopItem } from '../core/inventory';
 import { computeStats, statDiff, STAT_KEYS } from '../core/stats';
 import { EQUIP_SLOTS, POTION_IDS, type PotionId } from '../core/types';
-import { t } from '../i18n';
-import { session } from '../state/session';
+import { t, tEvent } from '../i18n';
+import { net } from '../net/client';
+import type { GameEvent } from '../sim/types';
 import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
 import { formatAltarEffect, formatStats, formatStatValue } from '../ui/statText';
@@ -31,6 +32,7 @@ export class ShopScene extends Phaser.Scene {
   private stock: string[] = [];
   private tab: Tab = 'equipment';
   private content!: Phaser.GameObjects.Container;
+  private lastKey = '';
   private message!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -39,8 +41,9 @@ export class ShopScene extends Phaser.Scene {
 
   init(data: ShopData) {
     this.mode = data.mode;
-    const run = session.run!;
+    const run = net.run!;
     this.stock = data.cellId !== undefined ? (run.map.cells[data.cellId].shopStock ?? []) : [];
+    this.lastKey = '';
     this.tab = 'equipment';
   }
 
@@ -55,15 +58,30 @@ export class ShopScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-ESC', () => this.close());
     this.input.keyboard?.on('keydown-C', () => this.mode === 'equipment' && this.close());
     this.render();
+
+    // 購買結果由房主處理：收到自己的訊息就顯示，自己的資料變了就重畫
+    const onGame = (e: GameEvent) => {
+      if (e.k === 'toast' && e.pid === net.myId) this.message.setText(tEvent(e.key, e.params)).setColor(e.color ?? THEME.text);
+    };
+    const onState = () => {
+      const key = JSON.stringify(net.me ?? null);
+      if (key !== this.lastKey) this.render();
+    };
+    net.on('game', onGame);
+    net.on('state', onState);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      net.off('game', onGame);
+      net.off('state', onState);
+    });
   }
 
   private close() {
-    session.save();
+    net.popUi();
     this.scene.stop();
-    this.scene.resume(SCENES.room);
   }
 
   private render() {
+    this.lastKey = JSON.stringify(net.me ?? null);
     this.content.removeAll(true);
     if (this.mode === 'shop') this.renderStock();
     else this.renderStats();
@@ -91,7 +109,7 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private renderEquipmentStock() {
-    const run = session.run!;
+    const run = net.me!;
     const items = this.stock
       .map(resolveShopItem)
       .filter((it): it is ShopItem => it !== null && it.kind === 'equipment');
@@ -118,7 +136,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** 藥水：本店販售的 + 已解鎖的（已解鎖的可免費切換攜帶） */
   private renderPotionStock() {
-    const run = session.run!;
+    const run = net.me!;
     const sold = new Set(
       this.stock.map(resolveShopItem).flatMap((it) => (it?.kind === 'potion' ? [it.potionId] : [])),
     );
@@ -163,7 +181,7 @@ export class ShopScene extends Phaser.Scene {
   /** 與同欄位目前裝備比較，回傳文字與顏色（全部提升為綠、全部下降為紅、有升有降為金） */
   private compareText(itemId: string): [string, string] {
     const def = EQUIPMENT[itemId];
-    const currentId = session.run!.equipment[def.slot];
+    const currentId = net.me!.equipment[def.slot];
     const current = currentId ? EQUIPMENT[currentId].stats : {};
     const diff = statDiff(current, def.stats);
     const values = Object.values(diff) as number[];
@@ -173,31 +191,16 @@ export class ShopScene extends Phaser.Scene {
   }
 
   private buy(item: ShopItem) {
-    const result = buyItem(session.run!, item.id);
-    const msg: Record<BuyResult, [string, string]> = {
-      ok: [t(item.kind === 'potion' ? 'shop.potionUnlocked' : 'shop.bought', { name: t(item.nameKey) }), THEME.textGreen],
-      noGold: [t('shop.noGold'), THEME.textRed],
-      owned: [t('shop.owned'), THEME.textDim],
-      wrongClass: [t('shop.wrongClass'), THEME.textRed],
-      unknown: ['?', THEME.textRed],
-    };
-    const [text, color] = msg[result];
-    this.message.setText(text).setColor(color);
-    if (result === 'ok') session.save();
-    this.render();
+    net.act({ k: 'buy', item: item.id });
   }
 
   private carry(potionId: PotionId) {
-    if (carryPotion(session.run!, potionId)) {
-      this.message.setText(t('shop.potionCarried', { name: t(POTIONS[potionId].nameKey) })).setColor(THEME.textGreen);
-      session.save();
-    }
-    this.render();
+    net.act({ k: 'carry', potion: potionId });
   }
 
   /** 背包模式左側：角色最終屬性與已接受的祭壇契約 */
   private renderStats() {
-    const run = session.run!;
+    const run = net.me!;
     const stats = computeStats(run.classId, run.equipment, run.altarEffects);
     this.add2(addText(this, 96, 110, t('shop.finalStats'), 18, THEME.textDim));
     STAT_KEYS.forEach((k, i) => {
@@ -215,7 +218,7 @@ export class ShopScene extends Phaser.Scene {
 
   /** 右側：身上裝備（含屬性）與藥水 */
   private renderInventory() {
-    const run = session.run!;
+    const run = net.me!;
     const x = 760;
     const w = 400;
     this.add2(addText(this, x, 70, t('hud.gold', { gold: run.gold }), 20, THEME.textGold));

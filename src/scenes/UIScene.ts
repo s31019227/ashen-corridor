@@ -6,9 +6,9 @@ import { PLAYER_CONFIG } from '../config/player';
 import { POTIONS } from '../config/potions';
 import { difficultyLevel } from '../core/difficulty';
 import { THEME } from '../config/theme';
-import type { Cooldown } from '../core/cooldown';
+import { cdProgress, type Cooldown } from '../core/cooldown';
 import { t } from '../i18n';
-import { session } from '../state/session';
+import { net } from '../net/client';
 import { inputHub } from '../systems/InputSystem';
 import { Bar } from '../ui/Bar';
 import { Button, CLICK_GUARD_MS } from '../ui/Button';
@@ -50,6 +50,8 @@ export class UIScene extends Phaser.Scene {
   private potionButtons: ActionButton[] = [];
   private joystick?: VirtualJoystick;
   private createdAt = 0;
+  private teamText!: Phaser.GameObjects.Text;
+  private deadText!: Phaser.GameObjects.Text;
 
   constructor() {
     super(SCENES.ui);
@@ -61,14 +63,14 @@ export class UIScene extends Phaser.Scene {
 
   create() {
     const { width, height } = GAME_CONFIG;
-    const run = session.run!;
+    const me = net.me!;
     this.skillButtons = [];
     this.potionButtons = [];
     this.minimapRoomId = -1;
     this.createdAt = this.time.now;
 
     // 左上：職業、血魔條、金幣
-    addText(this, 20, 10, t(CLASSES[run.classId].nameKey), 16, THEME.textDim);
+    addText(this, 20, 10, `${t(CLASSES[me.classId].nameKey)}${net.isMultiplayer ? `　${me.name}` : ''}`, 16, THEME.textDim);
     this.hpBar = new Bar(this, 20, 42, 280, 18, THEME.hp);
     this.mpBar = new Bar(this, 20, 64, 280, 14, THEME.mp);
     this.goldText = addText(this, 20, 78, '', 16, THEME.textGold);
@@ -94,6 +96,14 @@ export class UIScene extends Phaser.Scene {
       fontSize: 14,
     });
     this.dangerText = addText(this, width - 200, 130, '', 14, THEME.textRed);
+    // 多人：隊友狀態、連線狀態
+    this.teamText = addText(this, 20, 104, '', 14, THEME.textDim, { lineSpacing: 4 });
+    this.deadText = addText(this, width / 2, height / 2 - 120, t('msg.waitRevive'), 22, THEME.textRed, {
+      stroke: '#000',
+      strokeThickness: 4,
+    })
+      .setOrigin(0.5)
+      .setVisible(false);
 
     // 解除鎖定
     this.unlockBtn = new Button(this, width - 110, height - 290, t('hud.unlock'), () => this.room.unlockTarget(), {
@@ -152,7 +162,7 @@ export class UIScene extends Phaser.Scene {
 
   private createSkillButtons() {
     const { width, height } = GAME_CONFIG;
-    const def = CLASSES[session.run!.classId];
+    const def = CLASSES[net.me!.classId];
     const ax = width - 90;
     const ay = height - 90;
     // 攻擊按鈕 = 自動普攻開關
@@ -184,19 +194,22 @@ export class UIScene extends Phaser.Scene {
   private drawCooldown(btn: ActionButton, cd: Cooldown | undefined) {
     const g = btn.overlay;
     g.clear();
-    if (!cd || cd.ready) {
+    // 加入者的冷卻來自上一個快照，扣掉之後經過的時間讓倒數平順
+    const remaining = cd ? cd.remaining - net.sinceSnap : 0;
+    if (!cd || remaining <= 0) {
       btn.cdText.setText('');
       return;
     }
+    const progress = cdProgress({ remaining, duration: cd.duration });
     g.fillStyle(0x000000, 0.6);
     if (btn.square) {
-      const h = btn.square * cd.progress;
+      const h = btn.square * progress;
       g.fillRect(-btn.square / 2, btn.square / 2 - h, btn.square, h);
     } else {
       const start = -Math.PI / 2;
-      g.slice(0, 0, btn.radius, start, start + Math.PI * 2 * cd.progress, false).fillPath();
+      g.slice(0, 0, btn.radius, start, start + Math.PI * 2 * progress, false).fillPath();
     }
-    btn.cdText.setText(cd.remaining >= 1 ? `${Math.ceil(cd.remaining)}` : cd.remaining >= 0.1 ? cd.remaining.toFixed(1) : '');
+    btn.cdText.setText(remaining >= 1 ? `${Math.ceil(remaining)}` : remaining >= 0.1 ? remaining.toFixed(1) : '');
   }
 
   private showToast(message: string, color: string) {
@@ -205,8 +218,25 @@ export class UIScene extends Phaser.Scene {
     this.toastTween = this.tweens.add({ targets: this.toastText, alpha: 0, delay: 1400, duration: 400 });
   }
 
+  /** 多人：列出隊友血量與連線狀態，以及自己的連線狀態 */
+  private refreshTeam() {
+    if (!net.isMultiplayer) return;
+    const run = net.run!;
+    const world = net.world!;
+    const lines: string[] = [];
+    if (net.status !== 'ok') lines.push(t(net.status === 'lost' ? 'net.lost' : 'net.connecting'));
+    lines.push(t('hud.room', { code: net.roomCode }));
+    for (const pr of Object.values(run.players)) {
+      if (pr.id === net.myId) continue;
+      const e = world.players[pr.id];
+      const state = !e?.connected ? t('hud.offline') : e.dead ? t('hud.down') : `${Math.ceil(e.hp)}/${e.stats.maxHp}`;
+      lines.push(`${pr.name}（${t(CLASSES[pr.classId].nameKey)}）${state}`);
+    }
+    this.teamText.setText(lines.join('\n'));
+  }
+
   private refreshMinimap() {
-    const run = session.run!;
+    const run = net.run!;
     if (this.minimapRoomId === run.currentRoomId) return;
     this.minimapRoomId = run.currentRoomId;
     this.minimap.removeAll(true);
@@ -214,10 +244,12 @@ export class UIScene extends Phaser.Scene {
   }
 
   update() {
-    const room = this.room;
-    const run = session.run;
-    if (!run || !room.player || !room.cell) return;
-    const p = room.player;
+    const run = net.run;
+    const world = net.world;
+    const me = net.me;
+    const p = net.meEntity;
+    if (!run || !world || !me || !p) return;
+    const cell = run.map.cells[world.roomId];
 
     if (this.joystick) {
       inputHub.joystick.x = this.joystick.value.x;
@@ -226,22 +258,24 @@ export class UIScene extends Phaser.Scene {
 
     this.hpBar.setValue(p.hp, p.stats.maxHp);
     this.mpBar.setValue(p.mp, p.stats.maxMp);
-    this.goldText.setText(t('hud.gold', { gold: run.gold }));
+    this.goldText.setText(t('hud.gold', { gold: me.gold }));
     this.killsText.setText(t('hud.kills', { kills: run.kills }));
-    const roomName = t(`room.${room.cell.type}`);
-    const left = room.aliveEnemies.length;
+    const roomName = t(`room.${cell.type}`);
+    const left = world.enemies.length;
     this.roomText.setText(left > 0 ? `${roomName}・${t('hud.enemiesLeft', { count: left })}` : roomName);
     this.dangerText.setText(t('hud.danger', { level: difficultyLevel(run.map) }));
-    const auto = session.settings.autoAttack;
+    const auto = me.autoAttack;
     const attackBtn = this.skillButtons[0];
     attackBtn.label.setText(`${t('hud.autoAttack')}\n${t(auto ? 'settings.on' : 'settings.off')}`);
     (attackBtn.container.list[0] as Phaser.GameObjects.Arc).setFillStyle(auto ? 0x8b2e2e : 0x2a2830, 0.9);
     this.unlockBtn.setVisible(p.lockedId !== null);
     this.refreshMinimap();
+    this.deadText.setVisible(p.dead);
+    this.refreshTeam();
 
     this.skillButtons.forEach((btn, i) => this.drawCooldown(btn, i === 0 ? p.attackCd : p.skillCds[i - 1]));
     this.potionButtons.forEach((btn, i) => {
-      const potionId = run.potions[i];
+      const potionId = me.potions[i];
       const def = potionId ? POTIONS[potionId] : null;
       btn.label.setText(def ? t(def.shortKey) : '');
       (btn.container.list[0] as Phaser.GameObjects.Rectangle).setFillStyle(def ? def.color : THEME.button, def ? 0.8 : 0.4);

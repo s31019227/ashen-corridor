@@ -4,7 +4,7 @@ import { ROOM_COLORS, THEME } from '../config/theme';
 import { bfsDistances, neighbors } from '../core/mapGen';
 import type { FloorMap, RoomType } from '../core/types';
 import { t } from '../i18n';
-import { session } from '../state/session';
+import { net } from '../net/client';
 import { Button } from '../ui/Button';
 import { addBackdrop } from '../ui/Panel';
 import { addText } from '../ui/text';
@@ -86,13 +86,19 @@ export class MapScene extends Phaser.Scene {
   }
 
   create() {
-    const run = session.run;
+    const run = net.run;
     if (!run) {
       this.scene.start(SCENES.menu);
       return;
     }
     const { width, height } = GAME_CONFIG;
     const map = run.map;
+
+    // 接續存檔或中途重新連線時不在起點，直接進入格子，不播開場動畫
+    if (this.mode === 'intro' && run.currentRoomId !== map.startId) {
+      this.enter();
+      return;
+    }
 
     if (this.mode === 'view') addBackdrop(this, 0.85, () => this.close());
 
@@ -148,8 +154,7 @@ export class MapScene extends Phaser.Scene {
   }
 
   private close() {
+    net.popUi();
     this.scene.stop();
-    this.scene.resume(SCENES.room);
-    this.scene.resume(SCENES.ui);
   }
 }

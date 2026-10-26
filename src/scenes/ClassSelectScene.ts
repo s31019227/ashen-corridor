@@ -6,10 +6,10 @@ import { computeStats } from '../core/stats';
 import { emptyEquipment } from '../core/runState';
 import { CLASS_IDS, type ClassId } from '../core/types';
 import { t } from '../i18n';
-import { loadRun } from '../save/storage';
+import { net } from '../net/client';
+import { loadGame } from '../save/storage';
 import { Button } from '../ui/Button';
 import { addText } from '../ui/text';
-import { startNewRun } from './flow';
 import { SCENES } from './keys';
 
 export class ClassSelectScene extends Phaser.Scene {
@@ -45,11 +45,11 @@ export class ClassSelectScene extends Phaser.Scene {
     new Button(this, width / 2 - 130, height - 50, t('classSelect.back'), () => this.scene.start(SCENES.menu), {
       width: 200,
     });
-    new Button(this, width / 2 + 130, height - 50, t('classSelect.start'), () => startNewRun(this, this.selected), {
+    new Button(this, width / 2 + 130, height - 50, t('classSelect.start'), () => net.startSolo(this.selected), {
       width: 200,
       color: THEME.accent,
     });
-    if (loadRun()) {
+    if (loadGame()) {
       addText(this, width / 2, height - 94, t('classSelect.overwriteWarn'), 14, THEME.textRed).setOrigin(0.5);
     }
 

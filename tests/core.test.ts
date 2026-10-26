@@ -3,10 +3,20 @@ import { bfsDistances, generateFloor, isBossReachable, markCleared } from '../sr
 import { calcDamage } from '../src/core/damage';
 import { canTransition } from '../src/core/roomTransition';
 import { selectTarget, type TargetCandidate } from '../src/core/targeting';
-import { Cooldown } from '../src/core/cooldown';
-import { createRun, migrateRun } from '../src/core/runState';
+import { cdReady, cdTick, cdTrigger, cooldown } from '../src/core/cooldown';
+import { createPlayerRun, createRun, migrateRun, type NewPlayer } from '../src/core/runState';
+import type { ClassId } from '../src/core/types';
+
+const np = (classId: ClassId, id = 'p1'): NewPlayer => ({ id, name: id, classId, color: 0xffffff, autoAttack: true });
 import { computeStats } from '../src/core/stats';
-import { buyItem, carryPotion } from '../src/core/inventory';
+import { buyItem, carryPotion, resolveShopItem } from '../src/core/inventory';
+import { neighbors } from '../src/core/mapGen';
+import { ENEMIES } from '../src/config/enemies';
+import { stepSim } from '../src/sim/step';
+import { applyAction } from '../src/sim/actions';
+import { hitEnemy } from '../src/sim/combat';
+import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
+import type { PlayerEntity, Sim } from '../src/sim/types';
 import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
 import { CLASSES } from '../src/config/classes';
 import { MAP_CONFIG } from '../src/config/map';
@@ -92,17 +102,17 @@ describe('selectTarget', () => {
 
 describe('cooldown', () => {
   it('ticks down', () => {
-    const cd = new Cooldown(2);
-    cd.trigger();
-    expect(cd.ready).toBe(false);
-    cd.tick(2.5);
-    expect(cd.ready).toBe(true);
+    const cd = cooldown(2);
+    cdTrigger(cd);
+    expect(cdReady(cd)).toBe(false);
+    cdTick(cd, 2.5);
+    expect(cdReady(cd)).toBe(true);
   });
 });
 
 describe('inventory', () => {
   it('weapons are class-locked, armor is not', () => {
-    const run = createRun('warrior', 1);
+    const run = createPlayerRun(np('warrior'));
     run.gold = 1000;
     expect(buyItem(run, 'ember_wand')).toBe('wrongClass');
     expect(buyItem(run, 'iron_greatsword')).toBe('ok');
@@ -114,7 +124,7 @@ describe('inventory', () => {
   });
 
   it('starts without potions; buying unlocks, carrying swaps for free', () => {
-    const run = createRun('mage', 1);
+    const run = createPlayerRun(np('mage'));
     expect(run.potions).toEqual([null]);
     run.gold = 1000;
     expect(buyItem(run, 'potion:mp')).toBe('ok');
@@ -173,7 +183,7 @@ describe('altar effects', () => {
     for (const c of map.cells.filter((c) => c.type === 'altar')) expect(c.altarEffect).toBeTruthy();
   });
   it('modify computed stats', () => {
-    const run = createRun('warrior', 3);
+    const run = createPlayerRun(np('warrior'));
     const base = computeStats('warrior', run.equipment);
     const blessed = computeStats('warrior', run.equipment, ['bloodpact']);
     expect(blessed.atk).toBe(Math.round(base.atk * 1.2));
@@ -185,8 +195,91 @@ describe('altar effects', () => {
 
 describe('save migration', () => {
   it('drops saves from older versions', () => {
-    const run = createRun('mage', 5);
+    const run = createRun([np('mage')], 5, 'p1');
     expect(migrateRun(run)).toBe(run);
-    expect(migrateRun({ ...run, version: 2 })).toBeNull();
+    expect(migrateRun({ ...run, version: 3 })).toBeNull();
+  });
+});
+
+describe('simulation (multiplayer)', () => {
+  const setup = (roomType: 'mob' | 'empty') => {
+    const run = createRun([np('warrior', 'a'), np('mage', 'b')], 3, 'a');
+    const room = run.map.cells.find((c) => c.type === roomType && Object.keys(neighbors(run.map, c.id)).length > 0)!;
+    const sim: Sim = { run, world: createWorld(run, room.id, null, new Set(['a', 'b'])), moves: {}, events: [] };
+    return { sim, room };
+  };
+
+  it('changes room only when all alive players are at the same edge', () => {
+    const { sim, room } = setup('empty');
+    const [dir] = Object.keys(neighbors(sim.run.map, room.id));
+    const edge = (p: PlayerEntity) => {
+      if (dir === 'up') p.y = ROOM_BOUNDS.top + 10;
+      if (dir === 'down') p.y = ROOM_BOUNDS.bottom - 10;
+      if (dir === 'left') p.x = ROOM_BOUNDS.left + 10;
+      if (dir === 'right') p.x = ROOM_BOUNDS.right - 10;
+    };
+    edge(sim.world.players.a);
+    stepSim(sim, 0.016);
+    expect(sim.world.roomId).toBe(room.id);
+    edge(sim.world.players.b);
+    stepSim(sim, 0.016);
+    expect(sim.world.roomId).not.toBe(room.id);
+  });
+
+  it('a dead player does not block the transition and revives in the next room', () => {
+    const { sim, room } = setup('empty');
+    const [dir] = Object.keys(neighbors(sim.run.map, room.id));
+    sim.world.players.b.dead = true;
+    const a = sim.world.players.a;
+    if (dir === 'up') a.y = ROOM_BOUNDS.top + 10;
+    if (dir === 'down') a.y = ROOM_BOUNDS.bottom - 10;
+    if (dir === 'left') a.x = ROOM_BOUNDS.left + 10;
+    if (dir === 'right') a.x = ROOM_BOUNDS.right - 10;
+    stepSim(sim, 0.016);
+    expect(sim.world.roomId).not.toBe(room.id);
+    expect(sim.world.players.b.dead).toBe(false);
+    expect(sim.world.players.b.hp).toBeGreaterThan(0);
+  });
+
+  it('gives kill gold to every player and revives the fallen when the room is cleared', () => {
+    const { sim } = setup('mob');
+    const goldA = sim.run.players.a.gold;
+    const goldB = sim.run.players.b.gold;
+    sim.world.players.b.dead = true;
+    for (const e of sim.world.enemies) hitEnemy(sim, 'a', e, 99999, 0, false);
+    stepSim(sim, 0.016);
+    expect(sim.run.players.a.gold).toBeGreaterThan(goldA);
+    expect(sim.run.players.b.gold - goldB).toBe(sim.run.players.a.gold - goldA);
+    expect(sim.world.players.b.dead).toBe(false);
+    expect(sim.run.map.cells[sim.world.roomId].type).toBe('empty');
+  });
+
+  it('ends in defeat when every connected player is down', () => {
+    const { sim } = setup('mob');
+    sim.world.players.a.dead = true;
+    sim.world.players.b.dead = true;
+    stepSim(sim, 0.016);
+    expect(sim.world.ending?.victory).toBe(false);
+  });
+
+  it('scales enemy hp with player count', () => {
+    const run1 = createRun([np('warrior', 'a')], 3, 'a');
+    const run2 = createRun([np('warrior', 'a'), np('mage', 'b')], 3, 'a');
+    const mob = run1.map.cells.find((c) => c.type === 'mob')!.id;
+    const w1 = createWorld(run1, mob, null, new Set(['a']));
+    const w2 = createWorld(run2, mob, null, new Set(['a', 'b']));
+    const ratio = (w: typeof w1) => w.enemies[0].maxHp / ENEMIES[w.enemies[0].defId].maxHp;
+    expect(ratio(w2) / ratio(w1)).toBeCloseTo(1.6, 1);
+  });
+
+  it('buy action only works in a shop room for items it sells', () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const sim: Sim = { run, world: createWorld(run, run.map.startId, null, new Set(['a'])), moves: {}, events: [] };
+    const item = run.map.cells[run.map.startId].shopStock!.find((id) => id.startsWith('potion:'))!;
+    run.players.a.gold = 1000;
+    applyAction(sim, 'a', { k: 'buy', item });
+    expect(run.players.a.potions[0]).toBe(item.slice('potion:'.length));
+    applyAction(sim, 'a', { k: 'buy', item: 'not_sold_here' });
+    expect(run.players.a.gold).toBe(1000 - resolveShopItem(item)!.price);
   });
 });
