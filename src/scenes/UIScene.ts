@@ -5,6 +5,9 @@ import { ACTION_KEY_LABEL, type GameAction } from '../config/keybinds';
 import { PLAYER_CONFIG } from '../config/player';
 import { POTIONS } from '../config/potions';
 import { difficultyLevel } from '../core/difficulty';
+import { LEVEL_CONFIG } from '../config/leveling';
+import { canLearn, skillPoints, xpForNext } from '../core/leveling';
+import { passiveAttackMult } from '../sim/effects';
 import { THEME } from '../config/theme';
 import { cdProgress, type Cooldown } from '../core/cooldown';
 import { t } from '../i18n';
@@ -31,6 +34,9 @@ interface ActionButton {
   radius: number;
   /** 方形按鈕（藥水）用 */
   square?: number;
+  /** 技能按鈕：等級顯示與學習（+）按鈕 */
+  rankText?: Phaser.GameObjects.Text;
+  learnBtn?: Phaser.GameObjects.Container;
 }
 
 /** HUD：血魔條、金幣、小地圖、技能 / 藥水按鈕、虛擬搖桿、提示訊息 */
@@ -51,6 +57,9 @@ export class UIScene extends Phaser.Scene {
   private joystick?: VirtualJoystick;
   private createdAt = 0;
   private teamText!: Phaser.GameObjects.Text;
+  private xpBar!: Bar;
+  private levelText!: Phaser.GameObjects.Text;
+  private buffText!: Phaser.GameObjects.Text;
   private deadText!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -73,8 +82,12 @@ export class UIScene extends Phaser.Scene {
     addText(this, 20, 10, `${t(CLASSES[me.classId].nameKey)}${net.isMultiplayer ? `　${me.name}` : ''}`, 16, THEME.textDim);
     this.hpBar = new Bar(this, 20, 42, 280, 18, THEME.hp);
     this.mpBar = new Bar(this, 20, 64, 280, 14, THEME.mp);
-    this.goldText = addText(this, 20, 78, '', 16, THEME.textGold);
-    this.killsText = addText(this, 140, 78, '', 16, THEME.textDim);
+    // 經驗條與等級
+    this.xpBar = new Bar(this, 20, 80, 280, 6, 0xc9a227);
+    this.levelText = addText(this, 20, 86, '', 15, THEME.textGold);
+    this.goldText = addText(this, 20, 108, '', 16, THEME.textGold);
+    this.killsText = addText(this, 140, 108, '', 16, THEME.textDim);
+    this.buffText = addText(this, 20, 130, '', 14, '#e0a060');
 
     // 上方中央：格子資訊與提示
     this.roomText = addText(this, width / 2, 14, '', 18).setOrigin(0.5, 0);
@@ -97,7 +110,7 @@ export class UIScene extends Phaser.Scene {
     });
     this.dangerText = addText(this, width - 200, 130, '', 14, THEME.textRed);
     // 多人：隊友狀態、連線狀態
-    this.teamText = addText(this, 20, 104, '', 14, THEME.textDim, { lineSpacing: 4 });
+    this.teamText = addText(this, 20, 154, '', 14, THEME.textDim, { lineSpacing: 4 });
     this.deadText = addText(this, width / 2, height / 2 - 120, t('msg.waitRevive'), 22, THEME.textRed, {
       stroke: '#000',
       strokeThickness: 4,
@@ -175,8 +188,26 @@ export class UIScene extends Phaser.Scene {
     ];
     const skills = [...def.skills, def.ultimate];
     layout.forEach(([action, x, y, r], i) => {
-      this.skillButtons.push(this.makeButton(x, y, action, t(skills[i].nameKey), r, i === 3 ? 0x4a1a2a : THEME.button));
+      const btn = this.makeButton(x, y, action, t(skills[i].nameKey), r, i === 3 ? 0x4a1a2a : THEME.button);
+      btn.rankText = addText(this, 0, -r - 9, '', 11, THEME.textGold, { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
+      btn.container.add(btn.rankText);
+      btn.learnBtn = this.makeLearnButton(x + r * 0.75, y - r * 0.75, `learn${i + 1}` as GameAction);
+      this.skillButtons.push(btn);
     });
+  }
+
+  /** 技能旁的「+」：有技能點且可以學習 / 升級時出現（電腦也可按 Ctrl + 技能鍵） */
+  private makeLearnButton(x: number, y: number, action: GameAction) {
+    const circle = this.add.circle(0, 0, 13, 0xc9a227).setStrokeStyle(2, 0x000000);
+    const plus = addText(this, 0, -1, '+', 20, '#000000').setOrigin(0.5);
+    const container = this.add.container(x, y, [circle, plus]).setDepth(10);
+    circle.setInteractive({ useHandCursor: true });
+    circle.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, e: Phaser.Types.Input.EventData) => {
+      e.stopPropagation();
+      inputHub.press(action);
+    });
+    this.tweens.add({ targets: container, scale: 1.15, yoyo: true, repeat: -1, duration: 500 });
+    return container;
   }
 
   private createPotionButtons() {
@@ -216,6 +247,36 @@ export class UIScene extends Phaser.Scene {
     this.toastText.setText(message).setColor(color).setAlpha(1);
     this.toastTween?.stop();
     this.toastTween = this.tweens.add({ targets: this.toastText, alpha: 0, delay: 1400, duration: 400 });
+  }
+
+  /** 等級、經驗、技能等級、可學習提示、開關技能與 buff */
+  private refreshSkills() {
+    const me = net.me!;
+    const p = net.meEntity!;
+    const def = CLASSES[me.classId];
+    const skills = [...def.skills, def.ultimate];
+    const maxed = me.level >= LEVEL_CONFIG.maxLevel;
+    this.xpBar.setValue(maxed ? 1 : me.xp, maxed ? 1 : xpForNext(me.level), false);
+    const points = skillPoints(me);
+    this.levelText.setText(`Lv.${me.level}${points > 0 ? `　${t('hud.skillPoints', { n: points })}` : ''}`);
+    skills.forEach((skill, i) => {
+      const btn = this.skillButtons[i + 1];
+      const rank = me.skillRanks[i] ?? 0;
+      btn.container.setAlpha(rank > 0 ? 1 : 0.4);
+      btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
+      btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
+      const on = skill.kind === 'toggle' && p.toggles[skill.id];
+      (btn.container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);
+    });
+    const parts = p.buffs.map((b) => {
+      const skill = skills.find((s) => s.id === b.id);
+      return `${skill ? t(skill.nameKey) : b.id} ${Math.ceil(b.remaining - net.sinceSnap)}s`;
+    });
+    if (me.classId === 'warrior' && !p.dead) {
+      const bonus = Math.round((passiveAttackMult({ run: net.run!, world: net.world!, moves: {}, events: [] }, p) - 1) * 100);
+      if (bonus > 0) parts.push(`${t(def.passive.nameKey)} +${bonus}%`);
+    }
+    this.buffText.setText(parts.join('　'));
   }
 
   /** 多人：列出隊友血量與連線狀態，以及自己的連線狀態 */
@@ -274,6 +335,7 @@ export class UIScene extends Phaser.Scene {
     this.refreshTeam();
 
     this.skillButtons.forEach((btn, i) => this.drawCooldown(btn, i === 0 ? p.attackCd : p.skillCds[i - 1]));
+    this.refreshSkills();
     this.potionButtons.forEach((btn, i) => {
       const potionId = me.potions[i];
       const def = potionId ? POTIONS[potionId] : null;

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { ACTION_KEYS, MOVE_KEYS, type GameAction } from '../config/keybinds';
+import { ACTION_KEYS, LEARN_FROM_SKILL, MOVE_KEYS, type GameAction } from '../config/keybinds';
 import type { Vec2 } from '../core/types';
 
 /**
@@ -56,7 +56,10 @@ export class KeyboardInput {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       const action = actionByKeyCode.get(event.keyCode);
-      if (action) inputHub.press(action);
+      if (!action) return;
+      const learn = event.ctrlKey ? LEARN_FROM_SKILL[action] : undefined;
+      if (learn) event.preventDefault(); // 避免 Ctrl+R 重新整理、Ctrl+F 搜尋
+      inputHub.press(learn ?? action);
     };
     kb.on('keydown', onKeyDown);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => kb.off('keydown', onKeyDown));

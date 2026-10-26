@@ -1,6 +1,7 @@
 import { getAltarEffect } from '../config/altar';
 import { CLASSES } from '../config/classes';
 import { EQUIPMENT } from '../config/equipment';
+import { LEVEL_CONFIG } from '../config/leveling';
 import { PLAYER_BASE_STATS, PLAYER_CONFIG } from '../config/player';
 import type { ClassId, EquipSlot, Stats, StatKey } from './types';
 
@@ -22,17 +23,19 @@ const MIN_ONE: StatKey[] = ['maxHp', 'maxMp', 'atk', 'moveSpeed'];
 
 /**
  * 計算角色最終數值：
- * 基礎 × 職業倍率 → + 裝備（目前預設關閉）→ + 祭壇固定值 → × 祭壇百分比
+ * 基礎 × 職業倍率 × 等級成長 → + 裝備 → + 祭壇固定值 → × 祭壇百分比
  */
 export function computeStats(
   classId: ClassId,
   equipment: Record<EquipSlot, string | null>,
   altarEffectIds: readonly string[] = [],
+  level = 1,
 ): Stats {
   const mult = CLASSES[classId].statMultipliers;
   const stats = { ...PLAYER_BASE_STATS };
   for (const k of STAT_KEYS) {
-    stats[k] = PLAYER_BASE_STATS[k] * (mult[k] ?? 1);
+    const growth = 1 + ((LEVEL_CONFIG.growthPercent[k] ?? 0) * (level - 1)) / 100;
+    stats[k] = PLAYER_BASE_STATS[k] * (mult[k] ?? 1) * growth + (LEVEL_CONFIG.growthFlat[k] ?? 0) * (level - 1);
   }
   if (PLAYER_CONFIG.applyEquipmentStats) {
     for (const itemId of Object.values(equipment)) {

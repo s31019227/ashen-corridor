@@ -14,7 +14,10 @@ import { neighbors } from '../src/core/mapGen';
 import { ENEMIES } from '../src/config/enemies';
 import { stepSim } from '../src/sim/step';
 import { applyAction } from '../src/sim/actions';
-import { hitEnemy } from '../src/sim/combat';
+import { hitEnemy, skillTarget } from '../src/sim/combat';
+import { damageTakenMult, moveSpeed, passiveAttackMult } from '../src/sim/effects';
+import { damagePlayer } from '../src/sim/enemies';
+import { addXp, canLearn, learnSkill, skillPoints } from '../src/core/leveling';
 import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
 import type { PlayerEntity, Sim } from '../src/sim/types';
 import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
@@ -281,5 +284,131 @@ describe('simulation (multiplayer)', () => {
     expect(run.players.a.potions[0]).toBe(item.slice('potion:'.length));
     applyAction(sim, 'a', { k: 'buy', item: 'not_sold_here' });
     expect(run.players.a.gold).toBe(1000 - resolveShopItem(item)!.price);
+  });
+});
+
+describe('leveling', () => {
+  it('follows LoL-style skill point rules', () => {
+    const p = createPlayerRun(np('warrior'));
+    expect(skillPoints(p)).toBe(1);
+    expect(canLearn(p, 3)).toBe(false); // 大招 6 級才能學
+    expect(learnSkill(p, 0)).toBe(true);
+    expect(skillPoints(p)).toBe(0);
+    addXp(p, 30); // 升到 2 級
+    expect(p.level).toBe(2);
+    expect(canLearn(p, 0)).toBe(false); // 第 2 級需要 3 級
+    expect(canLearn(p, 1)).toBe(true);
+    p.level = 9;
+    p.skillRanks = [4, 0, 0, 0];
+    expect(canLearn(p, 0)).toBe(true); // 9 級可以把一個技能升滿
+    p.level = 8;
+    expect(canLearn(p, 0)).toBe(false);
+    p.level = 6;
+    p.skillRanks = [1, 1, 1, 0];
+    expect(canLearn(p, 3)).toBe(true);
+  });
+
+  it('can gain several levels at once and caps at 18', () => {
+    const p = createPlayerRun(np('mage'));
+    addXp(p, 30 + 45 + 10);
+    expect(p.level).toBe(3);
+    expect(p.xp).toBe(10);
+    addXp(p, 999999);
+    expect(p.level).toBe(18);
+  });
+
+  it('level raises stats', () => {
+    const p = createPlayerRun(np('warrior'));
+    const l1 = computeStats('warrior', p.equipment, [], 1);
+    const l10 = computeStats('warrior', p.equipment, [], 10);
+    expect(l10.maxHp).toBeGreaterThan(l1.maxHp);
+    expect(l10.atk).toBeGreaterThan(l1.atk);
+  });
+});
+
+describe('warrior skills', () => {
+  const setup = () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a'])), moves: {}, events: [] };
+    run.players.a.skillRanks = [1, 1, 1, 1];
+    run.players.a.level = 6;
+    const p = sim.world.players.a;
+    p.mp = 999;
+    return { sim, p, e: sim.world.enemies[0] };
+  };
+
+  it('passive gives up to +100% attack at 30% hp', () => {
+    const { sim, p } = setup();
+    expect(passiveAttackMult(sim, p)).toBe(1);
+    p.hp = p.stats.maxHp * 0.3;
+    expect(passiveAttackMult(sim, p)).toBeCloseTo(2);
+    p.hp = p.stats.maxHp * 0.65;
+    expect(passiveAttackMult(sim, p)).toBeCloseTo(1.5);
+  });
+
+  it('heavy strike empowers the next attack with lifesteal', () => {
+    const { sim, p, e } = setup();
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    expect(p.empower).toEqual({ mult: 2, lifesteal: 100 });
+    e.x = p.x + 40;
+    e.y = p.y;
+    sim.world.enemies = [e];
+    p.hp = 50;
+    stepSim(sim, 0.016);
+    expect(p.empower).toBeNull();
+    expect(p.hp).toBeGreaterThan(50);
+  });
+
+  it('sacrifice burns self and damages nearby enemies every second, and toggles off', () => {
+    const { sim, p, e } = setup();
+    sim.run.players.a.autoAttack = false;
+    e.x = p.x + 40;
+    e.y = p.y;
+    e.castLock = 99; // 讓怪物站著不動
+    sim.world.enemies = [e];
+    const hp0 = p.hp;
+    const ehp0 = e.hp;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(p.toggles.sacrifice).toBe(true);
+    for (let i = 0; i < 21; i++) stepSim(sim, 0.05);
+    expect(p.hp).toBeLessThan(hp0);
+    expect(e.hp).toBeLessThan(ehp0);
+    p.skillCds[1].remaining = 0;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(p.toggles.sacrifice).toBe(false);
+  });
+
+  it('charge buffs speed and rage locks hp at 30%', () => {
+    const { sim, p } = setup();
+    const speed0 = moveSpeed(p);
+    applyAction(sim, 'a', { k: 'skill', i: 2 });
+    expect(moveSpeed(p)).toBeCloseTo(speed0 * 1.3);
+    expect(damageTakenMult(p)).toBeCloseTo(0.7);
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    damagePlayer(sim, p, 99999, true);
+    expect(p.dead).toBe(false);
+    expect(p.hp).toBeCloseTo(p.stats.maxHp * 0.3);
+  });
+
+  it('unlearned skills cannot be cast', () => {
+    const { sim, p } = setup();
+    sim.run.players.a.skillRanks = [0, 0, 0, 0];
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    expect(p.empower).toBeNull();
+  });
+
+  it('skill target prefers the locked enemy in range, else the nearest', () => {
+    const { sim, p } = setup();
+    const [a, b] = sim.world.enemies;
+    a.x = p.x + 100;
+    a.y = p.y;
+    b.x = p.x + 300;
+    b.y = p.y;
+    sim.world.enemies = [a, b];
+    expect(skillTarget(sim, p, 400)?.id).toBe(a.id);
+    p.lockedId = b.id;
+    expect(skillTarget(sim, p, 400)?.id).toBe(b.id);
+    expect(skillTarget(sim, p, 150)?.id).toBe(a.id);
   });
 });

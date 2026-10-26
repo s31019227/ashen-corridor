@@ -1,5 +1,6 @@
 import { getAltarEffect } from '../config/altar';
-import { CLASSES } from '../config/classes';
+import { CLASSES, rankValue } from '../config/classes';
+import { learnSkill } from '../core/leveling';
 import { ROOM_EVENT_CONFIG } from '../config/map';
 import { POTIONS } from '../config/potions';
 import { cdReady, cdTrigger } from '../core/cooldown';
@@ -42,12 +43,27 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       const def = CLASSES[pr.classId];
       const skill = a.i < 3 ? def.skills[a.i] : def.ultimate;
       const cd = p.skillCds[a.i];
+      const rank = pr.skillRanks[a.i] ?? 0;
       if (!skill || !cd) return;
+      if (rank <= 0) return toast(sim, pid, 'msg.notLearned', COLOR.dim);
       if (!cdReady(cd)) return toast(sim, pid, 'msg.onCooldown', COLOR.dim);
-      if (p.mp < skill.mpCost) return toast(sim, pid, 'msg.notEnoughMp', COLOR.red);
-      p.mp -= skill.mpCost;
-      cdTrigger(cd, skill.cooldown * (1 - p.stats.cooldownReduction / 100));
-      runSkill({ sim, player: p, skill, index: a.i });
+      // 開關型技能：關閉時不耗魔、不進冷卻
+      const turningOff = skill.kind === 'toggle' && p.toggles[skill.id];
+      const cost = turningOff ? 0 : rankValue(skill.mpCost, rank);
+      if (p.mp < cost) return toast(sim, pid, 'msg.notEnoughMp', COLOR.red);
+      p.mp -= cost;
+      const cooldown = rankValue(skill.cooldown, rank) * (1 - p.stats.cooldownReduction / 100);
+      // 開關型技能 0 冷卻時給一點間隔，避免連按
+      cdTrigger(cd, skill.kind === 'toggle' ? Math.max(cooldown, 0.3) : cooldown);
+      runSkill({ sim, player: p, skill, index: a.i, rank });
+      return;
+    }
+    case 'learn': {
+      if (learnSkill(pr, a.i)) {
+        const def = CLASSES[pr.classId];
+        const skill = a.i < 3 ? def.skills[a.i] : def.ultimate;
+        p.skillCds[a.i].duration = rankValue(skill.cooldown, pr.skillRanks[a.i]);
+      }
       return;
     }
     case 'potion': {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CLASSES, type SkillDef } from '../config/classes';
+import { CLASSES } from '../config/classes';
 import { GAME_CONFIG } from '../config/game';
 import { THEME } from '../config/theme';
 import { computeStats } from '../core/stats';
@@ -9,6 +9,7 @@ import { t } from '../i18n';
 import { net } from '../net/client';
 import { loadGame } from '../save/storage';
 import { Button } from '../ui/Button';
+import { renderSkillList } from '../ui/classDetail';
 import { addText } from '../ui/text';
 import { SCENES } from './keys';
 
@@ -39,7 +40,7 @@ export class ClassSelectScene extends Phaser.Scene {
       this.cards.set(id, card);
     });
 
-    this.add.rectangle(width / 2, 430, width - 120, 330, THEME.panel).setStrokeStyle(2, THEME.panelBorder);
+    this.add.rectangle(width / 2, 432, width - 120, 364, THEME.panel).setStrokeStyle(2, THEME.panelBorder);
     this.detail = this.add.container(0, 0);
 
     new Button(this, width / 2 - 130, height - 50, t('classSelect.back'), () => this.scene.start(SCENES.menu), {
@@ -50,7 +51,7 @@ export class ClassSelectScene extends Phaser.Scene {
       color: THEME.accent,
     });
     if (loadGame()) {
-      addText(this, width / 2, height - 94, t('classSelect.overwriteWarn'), 14, THEME.textRed).setOrigin(0.5);
+      addText(this, width / 2, height - 88, t('classSelect.overwriteWarn'), 14, THEME.textRed).setOrigin(0.5);
     }
 
     this.select(this.selected);
@@ -69,10 +70,10 @@ export class ClassSelectScene extends Phaser.Scene {
     const def = CLASSES[id];
     const stats = computeStats(id, emptyEquipment());
     const left = 90;
-    let y = 285;
+    let y = 270;
 
     const line = (x: number, text: string, size = 16, color: string = THEME.text) => {
-      const obj = addText(this, x, y, text, size, color, { wordWrap: { width: 520 } });
+      const obj = addText(this, x, y, text, size, color, { wordWrap: { width: 430 } });
       this.detail.add(obj);
       return obj;
     };
@@ -87,21 +88,9 @@ export class ClassSelectScene extends Phaser.Scene {
     const statKeys = ['maxHp', 'maxMp', 'atk', 'def', 'moveSpeed'] as const;
     line(left, statKeys.map((k) => `${t(`stat.${k}`)} ${stats[k]}`).join('   '), 15, THEME.textDim);
     y += 40;
-    line(left, `${t('classSelect.passive')}：${t(def.passive.nameKey)}`, 18, THEME.textGold);
-    y += 26;
-    line(left, t(def.passive.descKey), 14, THEME.textDim);
+    line(left, t('classSelect.levelHint'), 13, THEME.textDim);
 
-    // 右欄：技能
-    const right = 680;
-    y = 285;
-    const skillLine = (label: string, s: SkillDef) => {
-      const head = addText(this, right, y, `${label}  ${t(s.nameKey)}   CD ${s.cooldown}s / MP ${s.mpCost}`, 16);
-      const desc = addText(this, right, y + 22, t(s.descKey), 13, THEME.textDim);
-      this.detail.add([head, desc]);
-      y += 54;
-    };
-    const keys = ['Q', 'E', 'R'];
-    def.skills.forEach((s, i) => skillLine(`[${keys[i]}]`, s));
-    skillLine(`[F] ${t('classSelect.ultimate')}`, def.ultimate);
+    // 右欄：被動與技能說明（各等級數值以 / 分隔）
+    renderSkillList(this, this.detail, id, 560, 262, 620);
   }
 }

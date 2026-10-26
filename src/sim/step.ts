@@ -5,6 +5,8 @@ import { cdTick } from '../core/cooldown';
 import { markCleared, neighbors } from '../core/mapGen';
 import { canTransition } from '../core/roomTransition';
 import { triggerInteract } from './actions';
+import { moveSpeed, tickBuffs } from './effects';
+import { updateToggles } from '../systems/SkillSystem';
 import { updatePlayerAttacks } from './combat';
 import { updateEnemies } from './enemies';
 import type { Sim } from './types';
@@ -34,7 +36,9 @@ function movePlayers(sim: Sim, dt: number) {
     for (const cd of p.skillCds) cdTick(cd, dt);
     for (const cd of p.potionCds) cdTick(cd, dt);
     if (p.invuln > 0) p.invuln -= dt;
+    tickBuffs(p, dt);
     if (!p.connected || p.dead) continue;
+    updateToggles(sim, p, dt);
     p.mp = Math.min(p.stats.maxMp, p.mp + (p.stats.maxMp * p.stats.mpRegen * dt) / 100);
     const mv = sim.moves[p.id];
     if (!mv) continue;
@@ -46,8 +50,9 @@ function movePlayers(sim: Sim, dt: number) {
       y /= len;
     }
     const b = ROOM_BOUNDS;
-    p.x = Math.max(b.left + R, Math.min(b.right - R, p.x + x * p.stats.moveSpeed * dt));
-    p.y = Math.max(b.top + R, Math.min(b.bottom - R, p.y + y * p.stats.moveSpeed * dt));
+    const speed = moveSpeed(p);
+    p.x = Math.max(b.left + R, Math.min(b.right - R, p.x + x * speed * dt));
+    p.y = Math.max(b.top + R, Math.min(b.bottom - R, p.y + y * speed * dt));
     const l = Math.hypot(x, y);
     p.fx = x / l;
     p.fy = y / l;

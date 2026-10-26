@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { getAltarEffect } from '../config/altar';
-import { CLASSES } from '../config/classes';
+import { CLASSES, rankValue } from '../config/classes';
 import { ENEMIES } from '../config/enemies';
 import { GAME_CONFIG } from '../config/game';
 import { PLAYER_CONFIG } from '../config/player';
@@ -9,7 +9,7 @@ import { neighbors } from '../core/mapGen';
 import { DIRS } from '../core/types';
 import { t, tEvent } from '../i18n';
 import { net } from '../net/client';
-import { attackRange } from '../sim/combat';
+import { attackRange } from '../sim/effects';
 import type { GameEvent, TelegraphEntity } from '../sim/types';
 import { INTERACT_POS, ROOM_BOUNDS, isCombatRoom } from '../sim/world';
 import { session } from '../state/session';
@@ -207,7 +207,7 @@ export class RoomScene extends Phaser.Scene {
         const def = CLASSES[pr.classId];
         const skill = e.skillIndex < 3 ? def.skills[e.skillIndex] : def.ultimate;
         floatText(this, pos.x, pos.y - 40, t(skill.nameKey), THEME.textGold, 20);
-        if (mine) this.toast(t('msg.skillNotImplemented', { name: t(skill.nameKey) }));
+        if (mine && !e.implemented) this.toast(t('msg.skillNotImplemented', { name: t(skill.nameKey) }));
         break;
       }
       case 'open':
@@ -220,6 +220,12 @@ export class RoomScene extends Phaser.Scene {
       case 'revive':
         if (mine) this.toast(t('msg.revived'), THEME.textGreen);
         break;
+      case 'levelup': {
+        const pos = net.displayPos('player', e.pid);
+        if (pos) floatText(this, pos.x, pos.y - 50, t('msg.levelUpFloat', { level: e.level }), THEME.textGold, 22);
+        if (mine) this.toast(t('msg.levelUp', { level: e.level }), THEME.textGold);
+        break;
+      }
       case 'room':
         this.changeRoom();
         break;
@@ -326,6 +332,12 @@ export class RoomScene extends Phaser.Scene {
           break;
         case 'ultimate':
           net.act({ k: 'skill', i: 3 });
+          break;
+        case 'learn1':
+        case 'learn2':
+        case 'learn3':
+        case 'learn4':
+          net.act({ k: 'learn', i: Number(action.slice(-1)) - 1 });
           break;
         case 'potion1':
         case 'potion2':
@@ -480,6 +492,33 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
+  /** 技能的持續效果：獻祭光環、狂怒、衝鋒、重擊蓄力 */
+  private drawSkillEffects(g: Phaser.GameObjects.Graphics) {
+    const world = net.world!;
+    const run = net.run!;
+    const pulse = 0.5 + 0.5 * Math.sin(this.time.now / 150);
+    for (const p of Object.values(world.players)) {
+      if (!p.connected || p.dead) continue;
+      const pos = net.displayPos('player', p.id) ?? p;
+      const pr = run.players[p.id];
+      if (p.toggles.sacrifice && pr) {
+        const def = CLASSES[pr.classId];
+        const index = def.skills.findIndex((s) => s.id === 'sacrifice');
+        const range = rankValue(def.skills[index]?.values.range, pr.skillRanks[index] ?? 0);
+        g.fillStyle(0xd04020, 0.1 + 0.06 * pulse).fillCircle(pos.x, pos.y, R + range);
+        g.lineStyle(2, 0xe06030, 0.5).strokeCircle(pos.x, pos.y, R + range);
+      }
+      if (p.buffs.some((b) => b.id === 'rage')) {
+        g.lineStyle(4, 0xff3020, 0.5 + 0.4 * pulse).strokeCircle(pos.x, pos.y, R + 6);
+      } else if (p.buffs.some((b) => b.id === 'charge')) {
+        g.lineStyle(3, 0x80c0ff, 0.6).strokeCircle(pos.x, pos.y, R + 5);
+      }
+      if (p.empower) {
+        g.fillStyle(0xffd060, 0.6 + 0.4 * pulse).fillCircle(pos.x + p.fx * (R + 14), pos.y + p.fy * (R + 14), 5);
+      }
+    }
+  }
+
   /** 紅色預警區、鎖定圈、普攻範圍 */
   private drawOverlay() {
     const g = this.overlay;
@@ -489,9 +528,10 @@ export class RoomScene extends Phaser.Scene {
     for (const tg of world.telegraphs) {
       this.paintTelegraph(g, tg, 0.12, 0.3, Math.min(1, (tg.elapsed + since) / tg.warnTime), THEME.telegraph);
     }
+    this.drawSkillEffects(g);
     const me = net.meEntity;
     if (!me || me.dead) return;
-    const ring = (id: number | null, width: number, alpha: number, pad: number) => {
+    const ring =(id: number | null, width: number, alpha: number, pad: number) => {
       const e = world.enemies.find((en) => en.id === id);
       if (!e) return;
       const pos = net.displayPos('enemy', e.id) ?? e;

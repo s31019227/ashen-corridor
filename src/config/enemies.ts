@@ -40,6 +40,8 @@ export interface EnemyDef {
   preferredDistance?: number;
   skills: EnemySkillDef[];
   goldDrop: [number, number];
+  /** 擊殺經驗（每位在線玩家都拿到） */
+  xp: number;
 }
 
 export const ENEMIES: Record<string, EnemyDef> = {
@@ -57,6 +59,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
     attackRange: 6,
     skills: [],
     goldDrop: [4, 8],
+    xp: 10,
   },
   ravager: {
     id: 'ravager',
@@ -74,6 +77,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
       { id: 'slam', shape: 'circle', size: 70, origin: 'self', warnTime: 1.0, damage: 18, cooldown: 6, castRange: 90 },
     ],
     goldDrop: [6, 12],
+    xp: 18,
   },
   hexer: {
     id: 'hexer',
@@ -92,6 +96,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
       { id: 'blight', shape: 'circle', size: 55, origin: 'target', warnTime: 1.1, damage: 14, cooldown: 3.5, castRange: 420 },
     ],
     goldDrop: [5, 10],
+    xp: 14,
   },
   warden: {
     id: 'warden',
@@ -111,6 +116,7 @@ export const ENEMIES: Record<string, EnemyDef> = {
       { id: 'ember', shape: 'circle', size: 80, origin: 'target', warnTime: 1.0, damage: 20, cooldown: 3, castRange: 800 },
     ],
     goldDrop: [120, 160],
+    xp: 200,
   },
 };
 

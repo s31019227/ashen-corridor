@@ -5,6 +5,10 @@ export type GameAction =
   | 'skill2'
   | 'skill3'
   | 'ultimate'
+  | 'learn1'
+  | 'learn2'
+  | 'learn3'
+  | 'learn4'
   | 'potion1'
   | 'potion2'
   | 'potion3'
@@ -38,6 +42,19 @@ export const ACTION_KEYS: Record<GameAction, string[]> = {
   equipment: ['C'],
   map: ['M'],
   pause: ['P'],
+  // 學習 / 升級技能：按住 Ctrl 再按技能鍵（見 LEARN_FROM_SKILL）
+  learn1: [],
+  learn2: [],
+  learn3: [],
+  learn4: [],
+};
+
+/** 按住 Ctrl 時，技能鍵改為學習 / 升級該技能（仿 LoL） */
+export const LEARN_FROM_SKILL: Partial<Record<GameAction, GameAction>> = {
+  skill1: 'learn1',
+  skill2: 'learn2',
+  skill3: 'learn3',
+  ultimate: 'learn4',
 };
 
 /** 按鈕上顯示的鍵名 */

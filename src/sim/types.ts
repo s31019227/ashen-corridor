@@ -5,6 +5,26 @@ import type { Dir, Stats } from '../core/types';
 
 // 格子內的即時模擬狀態。全部是純資料，房主每幀模擬後整包傳給其他玩家。
 
+/** 技能帶來的暫時加成（百分比） */
+export interface BuffMods {
+  moveSpeed?: number;
+  attackSpeed?: number;
+  /** 減傷 */
+  damageReduction?: number;
+  /** 普攻射程 */
+  attackRange?: number;
+  /** 血量下限（最大血量 %），例如戰士大招鎖血 */
+  hpFloor?: number;
+}
+
+export interface Buff {
+  /** 來源技能 id（同一技能重複施放會刷新） */
+  id: string;
+  remaining: number;
+  duration: number;
+  mods: BuffMods;
+}
+
 export interface PlayerEntity {
   id: string;
   x: number;
@@ -31,6 +51,13 @@ export interface PlayerEntity {
   invuln: number;
   /** 走進互動物件範圍時只觸發一次，離開後重新武裝 */
   interactArmed: boolean;
+  buffs: Buff[];
+  /** 開關型技能的狀態（key 為技能 id） */
+  toggles: Record<string, boolean>;
+  /** 開關型技能每秒結算用的計時 */
+  toggleTick: number;
+  /** 下一次普攻的強化（例如戰士重擊） */
+  empower: { mult: number; lifesteal: number } | null;
 }
 
 export interface EnemyEntity {
@@ -65,6 +92,8 @@ export interface ProjectileEntity {
   damage: number;
   knockback: number;
   crit: boolean;
+  /** 命中時回復造成傷害的比例（%） */
+  lifesteal: number;
   color: number;
 }
 
@@ -106,15 +135,17 @@ export type GameEvent =
   | { k: 'boom'; tg: TelegraphEntity }
   | { k: 'kill'; id: number }
   | { k: 'toast'; pid: string; key: string; params?: Record<string, string | number>; color?: string }
-  | { k: 'skill'; pid: string; skillIndex: number }
+  | { k: 'skill'; pid: string; skillIndex: number; implemented?: boolean }
   | { k: 'open'; pid: string; ui: 'shop' | 'altar'; cellId: number }
   | { k: 'room'; roomId: number; fromDir: Dir | null }
   | { k: 'cleared'; roomId: number }
-  | { k: 'revive'; pid: string };
+  | { k: 'revive'; pid: string }
+  | { k: 'levelup'; pid: string; level: number };
 
 /** 玩家送給房主的動作 */
 export type PlayerAction =
   | { k: 'skill'; i: number }
+  | { k: 'learn'; i: number }
   | { k: 'potion'; i: number }
   | { k: 'lock'; id: number }
   | { k: 'unlock' }

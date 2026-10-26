@@ -58,10 +58,14 @@ export function createPlayerEntity(p: PlayerRun, x: number, y: number, connected
     targetId: null,
     lastAttackedId: null,
     attackCd: cooldown(def.attackInterval),
-    skillCds: [...def.skills, def.ultimate].map((s) => cooldown(s.cooldown)),
+    skillCds: [...def.skills, def.ultimate].map((s) => cooldown(s.cooldown[0])),
     potionCds: p.potions.map(() => cooldown()),
     invuln: 0,
     interactArmed: true,
+    buffs: [],
+    toggles: {},
+    toggleTick: 0,
+    empower: null,
   };
 }
 
@@ -93,9 +97,13 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
     const pos = spawnPoint(fromDir, Math.max(0, online.indexOf(id)), online.length);
     const e = createPlayerEntity(p, pos.x, pos.y, connected.has(id));
     if (old) {
+      // 換格時沿用冷卻、buff、開關技能與強化狀態
       e.attackCd = old.attackCd;
       e.skillCds = old.skillCds;
       e.potionCds = old.potionCds;
+      e.buffs = old.buffs;
+      e.toggles = old.toggles;
+      e.empower = old.empower;
     }
     world.players[id] = e;
   });
@@ -172,6 +180,20 @@ export function refreshPlayerStats(sim: Sim, pid: string) {
   e.mp = Math.min(e.mp, e.stats.maxMp);
   // 藥水欄格數改變時（目前固定一格）補齊冷卻
   while (e.potionCds.length < p.potions.length) e.potionCds.push(cooldown());
+}
+
+/** 升級：重算數值，並回復增加的最大血魔 */
+export function onLevelUp(sim: Sim, pid: string) {
+  const e = sim.world.players[pid];
+  const p = sim.run.players[pid];
+  if (!e || !p) return;
+  const before = e.stats;
+  refreshPlayerStats(sim, pid);
+  if (!e.dead) {
+    e.hp = Math.min(e.stats.maxHp, e.hp + Math.max(0, e.stats.maxHp - before.maxHp));
+    e.mp = Math.min(e.stats.maxMp, e.mp + Math.max(0, e.stats.maxMp - before.maxMp));
+  }
+  sim.events.push({ k: 'levelup', pid, level: p.level });
 }
 
 /** 把模擬中的血魔寫回存檔資料 */

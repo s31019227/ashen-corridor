@@ -3,7 +3,7 @@ import { generateFloor } from './mapGen';
 import { computeStats } from './stats';
 import { EQUIP_SLOTS, type ClassId, type EquipSlot, type FloorMap, type PotionId } from './types';
 
-export const RUN_STATE_VERSION = 4;
+export const RUN_STATE_VERSION = 5;
 
 /** 每位玩家自己的進度（裝備、金幣、藥水等都是各自的） */
 export interface PlayerRun {
@@ -29,6 +29,11 @@ export interface PlayerRun {
   autoAttack: boolean;
   hp: number;
   mp: number;
+  level: number;
+  /** 目前等級累積的經驗 */
+  xp: number;
+  /** 四個技能（3 小技能 + 大招）的等級，0 = 尚未學習 */
+  skillRanks: number[];
 }
 
 /** 一局遊戲的狀態，也是存檔內容（由房主保存） */
@@ -72,6 +77,9 @@ export function createPlayerRun(p: NewPlayer): PlayerRun {
     usedCells: [],
     hp: stats.maxHp,
     mp: stats.maxMp,
+    level: 1,
+    xp: 0,
+    skillRanks: [0, 0, 0, 0],
   };
 }
 
@@ -92,9 +100,13 @@ export function createRun(players: NewPlayer[], seed: number, hostId: string): R
 
 /**
  * 讀檔時把舊版本存檔轉成目前格式，無法轉換時回傳 null（主選單就不會出現「繼續」）。
- * v4 改為多人格式，舊存檔直接作廢。
+ * v4 → v5：加入等級與技能等級。v4 之前的單人格式直接作廢。
  */
 export function migrateRun(data: RunState): RunState | null {
+  if (data.version === 4) {
+    for (const p of Object.values(data.players)) Object.assign(p, { level: 1, xp: 0, skillRanks: [0, 0, 0, 0] });
+    data.version = RUN_STATE_VERSION;
+  }
   return data.version === RUN_STATE_VERSION ? data : null;
 }
 
@@ -104,5 +116,5 @@ export function addGold(p: PlayerRun, amount: number) {
 }
 
 export function playerStats(p: PlayerRun) {
-  return computeStats(p.classId, p.equipment, p.altarEffects);
+  return computeStats(p.classId, p.equipment, p.altarEffects, p.level);
 }

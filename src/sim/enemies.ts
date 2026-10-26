@@ -5,6 +5,7 @@ import { cdReady, cdTick, cdTrigger } from '../core/cooldown';
 import { calcDamage } from '../core/damage';
 import { clamp, dist, edgeDist, pointSegmentDist } from '../core/geometry';
 import { enemyRadius } from './combat';
+import { damageTakenMult, hpFloor } from './effects';
 import type { EnemyEntity, PlayerEntity, Sim, TelegraphEntity } from './types';
 import { ROOM_BOUNDS } from './world';
 
@@ -32,7 +33,9 @@ function nearestPlayer(sim: Sim, e: EnemyEntity): PlayerEntity | null {
 /** 對玩家造成傷害；接觸傷害有短暫無敵，技能傷害（ignoreInvuln）不受影響 */
 export function damagePlayer(sim: Sim, p: PlayerEntity, amount: number, ignoreInvuln = false) {
   if (p.dead || (!ignoreInvuln && p.invuln > 0)) return;
-  p.hp = Math.max(0, p.hp - amount);
+  amount = Math.max(1, Math.round(amount * damageTakenMult(p)));
+  // 鎖血（例如戰士大招）：血量不會低於下限
+  p.hp = Math.max(hpFloor(p), p.hp - amount);
   p.invuln = GAME_CONFIG.combat.playerHitInvulnSec;
   sim.events.push({ k: 'dmg', x: p.x, y: p.y - 24, v: amount, onPlayer: p.id });
   if (p.hp <= 0) {

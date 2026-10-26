@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { net } from '../net/client';
 import type { HostState } from '../net/protocol';
 import { Button } from '../ui/Button';
+import { renderSkillList } from '../ui/classDetail';
 import { addText } from '../ui/text';
 import { goToMenu } from './flow';
 import { SCENES } from './keys';
@@ -106,16 +107,16 @@ export class LobbyScene extends Phaser.Scene {
     const me = s.lobby.find((p) => p.id === net.myId);
     if (!me) return;
     const left = 680;
-    this.add2(addText(this, left, 110, t('lobby.pickClass'), 18, THEME.textDim));
+    this.add2(addText(this, left, 94, t('lobby.pickClass'), 18, THEME.textDim));
     CLASS_IDS.forEach((id, i) => {
       const col = i % 4;
       const row = Math.floor(i / 4);
       const x = left + 60 + col * 130;
-      const y = 175 + row * 100;
+      const y = 160 + row * 92;
       const def = CLASSES[id];
       const selected = me.classId === id;
       const card = this.add2(
-        this.add.rectangle(x, y, 118, 86, THEME.panel).setStrokeStyle(selected ? 3 : 1, selected ? THEME.gold : THEME.panelBorder),
+        this.add.rectangle(x, y, 118, 80, THEME.panel).setStrokeStyle(selected ? 3 : 1, selected ? THEME.gold : THEME.panelBorder),
       );
       card.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.pickClass(id));
       this.add2(this.add.circle(x, y - 18, 14, def.color));
@@ -123,9 +124,8 @@ export class LobbyScene extends Phaser.Scene {
       this.add2(addText(this, x, y + 30, t(`attackStyle.${def.attackStyle}`), 12, THEME.textDim).setOrigin(0.5));
     });
     const def = CLASSES[me.classId];
-    const skills = [...def.skills, def.ultimate].map((sk) => t(sk.nameKey)).join('・');
-    this.add2(addText(this, left, 390, `${t(def.nameKey)}：${t(def.roleKey)}`, 17, THEME.text));
-    this.add2(addText(this, left, 418, `${t('classSelect.passive')}：${t(def.passive.nameKey)}　${t('classSelect.skills')}：${skills}`, 13, THEME.textDim, { wordWrap: { width: 520 } }));
+    this.add2(addText(this, left, 372, `${t(def.nameKey)}：${t(def.roleKey)}`, 17, THEME.text));
+    renderSkillList(this, this.dynamic, me.classId, left, 398, 540, true);
   }
 
   private renderButtons(s: HostState) {

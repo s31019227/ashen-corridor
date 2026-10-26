@@ -5,7 +5,10 @@ import { PLAYER_CONFIG } from '../config/player';
 import { cdReady, cdTick, cdTrigger } from '../core/cooldown';
 import { calcDamage } from '../core/damage';
 import { edgeDist } from '../core/geometry';
+import { addXp } from '../core/leveling';
 import { addGold } from '../core/runState';
+import { attackInterval, attackRange, passiveAttackMult } from './effects';
+import { onLevelUp } from './world';
 import { selectTarget } from '../core/targeting';
 import type { EnemyEntity, PlayerEntity, Sim } from './types';
 
@@ -17,12 +20,24 @@ export function enemyRadius(e: EnemyEntity) {
   return ENEMIES[e.defId].radius;
 }
 
-export function attackRange(sim: Sim, p: PlayerEntity) {
-  return CLASSES[sim.run.players[p.id].classId].attackRange + p.stats.attackRange;
-}
-
-export function attackInterval(sim: Sim, p: PlayerEntity) {
-  return CLASSES[sim.run.players[p.id].classId].attackInterval / (1 + p.stats.attackSpeed / 100);
+/**
+ * 技能選目標：鎖定的敵人在技能範圍內就打鎖定目標，否則打最近的敵人（不限範圍，朝它施放）。
+ * 沒有任何敵人時回傳 null。
+ */
+export function skillTarget(sim: Sim, p: PlayerEntity, range: number): EnemyEntity | null {
+  const alive = sim.world.enemies.filter((e) => e.alive);
+  const locked = alive.find((e) => e.id === p.lockedId);
+  if (locked && edgeDist(p, PLAYER_RADIUS, locked, enemyRadius(locked)) <= range) return locked;
+  let best: EnemyEntity | null = null;
+  let bestD = Infinity;
+  for (const e of alive) {
+    const d = edgeDist(p, PLAYER_RADIUS, e, enemyRadius(e));
+    if (d < bestD) {
+      best = e;
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 /** 根據鎖定與預設規則選出普攻目標 */
@@ -69,7 +84,11 @@ function tryAttack(sim: Sim, p: PlayerEntity) {
   const useMelee =
     def.attackStyle === 'melee' ||
     (def.attackStyle === 'hybrid' && edgeDist(p, PLAYER_RADIUS, target, enemyRadius(target)) <= (def.meleeRange ?? 0));
-  const mult = useMelee ? (def.meleeDamageMult ?? 1) : (def.rangedDamageMult ?? 1);
+  const styleMult = useMelee ? (def.meleeDamageMult ?? 1) : (def.rangedDamageMult ?? 1);
+  const empower = p.empower;
+  p.empower = null;
+  const mult = styleMult * passiveAttackMult(sim, p) * (empower?.mult ?? 1);
+  const lifesteal = empower?.lifesteal ?? 0;
   const crit = Math.random() * 100 < p.stats.critChance;
   let damage = calcDamage(p.stats.atk * mult, ENEMIES[target.defId].def);
   if (crit) damage = Math.round(damage * PLAYER_CONFIG.critMultiplier);
@@ -83,6 +102,7 @@ function tryAttack(sim: Sim, p: PlayerEntity) {
       r: PLAYER_RADIUS + Math.min(attackRange(sim, p), 60) * 0.8,
     });
     hitEnemy(sim, p.id, target, damage, def.attackKnockback, crit);
+    healFromLifesteal(sim, p, damage, lifesteal);
   } else {
     sim.world.projectiles.push({
       id: sim.world.nextId++,
@@ -93,6 +113,7 @@ function tryAttack(sim: Sim, p: PlayerEntity) {
       damage,
       knockback: def.attackKnockback,
       crit,
+      lifesteal,
       color: def.color,
     });
   }
@@ -109,6 +130,8 @@ function updateProjectiles(sim: Sim, dt: number) {
     const move = speed * dt;
     if (d <= enemyRadius(target) + move) {
       hitEnemy(sim, proj.ownerId, target, proj.damage, proj.knockback, proj.crit);
+      const owner = sim.world.players[proj.ownerId];
+      if (owner) healFromLifesteal(sim, owner, proj.damage, proj.lifesteal);
       return false;
     }
     proj.x += (dx / d) * move;
@@ -134,14 +157,26 @@ export function hitEnemy(sim: Sim, ownerId: string, e: EnemyEntity, damage: numb
   if (e.hp <= 0) killEnemy(sim, ownerId, e);
 }
 
-/** 擊殺：每位在線玩家都拿到一份金幣 */
+function healFromLifesteal(sim: Sim, p: PlayerEntity, damage: number, lifesteal: number) {
+  if (lifesteal <= 0 || p.dead) return;
+  const hp = Math.round((damage * lifesteal) / 100);
+  p.hp = Math.min(p.stats.maxHp, p.hp + hp);
+  sim.events.push({ k: 'heal', pid: p.id, hp, mp: 0 });
+}
+
+/** 擊殺：每位在線玩家都拿到一份金幣與經驗 */
 function killEnemy(sim: Sim, ownerId: string, e: EnemyEntity) {
   e.alive = false;
   const [min, max] = ENEMIES[e.defId].goldDrop;
   const gold = Math.round((min + Math.floor(Math.random() * (max - min + 1))) * sim.world.difficulty.gold);
+  const xp = ENEMIES[e.defId].xp;
   for (const p of Object.values(sim.world.players)) {
-    if (p.connected) addGold(sim.run.players[p.id], gold);
     if (p.lockedId === e.id) p.lockedId = null;
+    if (!p.connected) continue;
+    const pr = sim.run.players[p.id];
+    addGold(pr, gold);
+    const levels = addXp(pr, xp);
+    if (levels > 0) onLevelUp(sim, p.id);
   }
   sim.run.kills++;
   const owner = sim.run.players[ownerId];
