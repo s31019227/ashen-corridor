@@ -34,7 +34,10 @@ export const SKILL_HANDLERS: Record<string, SkillHandler> = {
     ctx.player.empower = { mult: v(ctx, 'mult'), lifesteal: v(ctx, 'lifesteal') };
     announce(ctx);
   },
-  /** 獻祭（開關）：每秒燃燒自身血量，對周圍敵人造成傷害（每秒結算在 updateToggles） */
+  /**
+   * 獻祭（開關）：每秒燃燒自身血量，對周圍敵人造成傷害（每秒結算在 updateToggles）。
+   * 光環半徑 = 角色半徑 + 範圍，光環邊緣碰到怪物邊緣就算命中。
+   */
   sacrifice: (ctx) => {
     const p = ctx.player;
     p.toggles.sacrifice = !p.toggles.sacrifice;

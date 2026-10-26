@@ -9,7 +9,7 @@ import type { Dir, Stats } from '../core/types';
 export interface BuffMods {
   moveSpeed?: number;
   attackSpeed?: number;
-  /** 減傷 */
+  /** 減傷（多個來源用乘法疊加） */
   damageReduction?: number;
   /** 普攻射程 */
   attackRange?: number;

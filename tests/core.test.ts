@@ -21,7 +21,7 @@ import { addXp, canLearn, learnSkill, skillPoints } from '../src/core/leveling';
 import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
 import type { PlayerEntity, Sim } from '../src/sim/types';
 import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
-import { CLASSES } from '../src/config/classes';
+import { CLASSES, rankValue } from '../src/config/classes';
 import { MAP_CONFIG } from '../src/config/map';
 
 describe('mapGen', () => {
@@ -386,6 +386,8 @@ describe('warrior skills', () => {
     expect(moveSpeed(p)).toBeCloseTo(speed0 * 1.3);
     expect(damageTakenMult(p)).toBeCloseTo(0.7);
     applyAction(sim, 'a', { k: 'skill', i: 3 });
+    // 減傷用乘法疊加：1 − 0.7 × 0.5
+    expect(damageTakenMult(p)).toBeCloseTo(0.35);
     damagePlayer(sim, p, 99999, true);
     expect(p.dead).toBe(false);
     expect(p.hp).toBeCloseTo(p.stats.maxHp * 0.3);
@@ -410,5 +412,32 @@ describe('warrior skills', () => {
     p.lockedId = b.id;
     expect(skillTarget(sim, p, 400)?.id).toBe(b.id);
     expect(skillTarget(sim, p, 150)?.id).toBe(a.id);
+  });
+});
+
+describe('warrior skill scaling', () => {
+  it('charge gains 3% per rank and rage cooldown drops 5s per rank', () => {
+    const def = CLASSES.warrior;
+    expect([1, 2, 3, 4, 5].map((r) => rankValue(def.skills[2].values.bonus, r))).toEqual([30, 33, 36, 39, 42]);
+    expect([1, 2, 3].map((r) => rankValue(def.ultimate.cooldown, r))).toEqual([60, 55, 50]);
+  });
+
+  it('sacrifice hits an enemy whose edge touches the aura edge', () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a'])), moves: {}, events: [] };
+    run.players.a.skillRanks = [0, 1, 0, 0];
+    run.players.a.autoAttack = false;
+    const p = sim.world.players.a;
+    const e = sim.world.enemies[0];
+    const er = ENEMIES[e.defId].radius;
+    sim.world.enemies = [e];
+    e.castLock = 99;
+    e.y = p.y;
+    e.x = p.x + 16 + 35 + er - 0.5; // 光環邊緣剛好碰到怪物邊緣
+    const hp0 = e.hp;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    stepSim(sim, 1.01);
+    expect(e.hp).toBeLessThan(hp0);
   });
 });

@@ -111,16 +111,18 @@ export const CLASSES: Record<ClassId, ClassDef> = {
         ...keys('warrior', 'charge'),
         kind: 'active',
         maxRank: 5,
-        cooldown: [15, 14, 13, 12, 11],
+        cooldown: [15],
         mpCost: [10],
-        values: { bonus: [30], duration: [5] },
+        // 每級效果 +3%
+        values: { bonus: [30, 33, 36, 39, 42], duration: [5] },
       },
     ],
     ultimate: {
       ...keys('warrior', 'rage'),
       kind: 'active',
       maxRank: 3,
-      cooldown: [60, 50, 40],
+      // 每級冷卻 −5 秒
+      cooldown: [60, 55, 50],
       mpCost: [30],
       values: { hpFloor: [30], range: [100], bonus: [50], duration: [15] },
     },

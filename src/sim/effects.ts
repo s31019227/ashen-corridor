@@ -3,9 +3,6 @@ import type { Buff, BuffMods, PlayerEntity, Sim } from './types';
 
 // 玩家的即時加成：技能 buff、被動。所有「實際數值」都經過這裡，畫面與模擬才會一致。
 
-/** 減傷上限（%） */
-const MAX_DAMAGE_REDUCTION = 80;
-
 export function buffSum(p: PlayerEntity, key: keyof BuffMods): number {
   return p.buffs.reduce((sum, b) => sum + (b.mods[key] ?? 0), 0);
 }
@@ -34,9 +31,12 @@ export function attackInterval(sim: Sim, p: PlayerEntity): number {
   return CLASSES[sim.run.players[p.id].classId].attackInterval / (1 + bonus / 100);
 }
 
-/** 受到傷害的倍率（減傷後） */
+/**
+ * 受到傷害的倍率（減傷後）。減傷用乘法疊加：30% 與 50% 疊起來是 1 − 0.7 × 0.5 = 65%，
+ * 所以永遠不會到 100%。之後若有用加法疊加的減傷，另外加欄位處理。
+ */
 export function damageTakenMult(p: PlayerEntity): number {
-  return 1 - Math.min(MAX_DAMAGE_REDUCTION, buffSum(p, 'damageReduction')) / 100;
+  return p.buffs.reduce((mult, b) => mult * (1 - (b.mods.damageReduction ?? 0) / 100), 1);
 }
 
 /** 血量下限（數值），0 表示沒有 */
