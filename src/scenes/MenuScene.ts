@@ -7,7 +7,7 @@ import { net } from '../net/client';
 import { loadGame } from '../save/storage';
 import { Button } from '../ui/Button';
 import { isStandalone, toggleFullscreen } from '../ui/fullscreen';
-import { addText } from '../ui/text';
+import { addText, fontPx } from '../ui/text';
 import { SCENES } from './keys';
 
 let autoJoinTried = false;
@@ -56,6 +56,7 @@ export class MenuScene extends Phaser.Scene {
       const info = t(saved.multiplayer ? 'menu.continueInfoMulti' : 'menu.continueInfo', {
         class: me ? t(CLASSES[me.classId].nameKey) : '',
         floor: saved.run.floor,
+        gold: me?.gold ?? 0,
         count: Object.keys(saved.run.players).length,
       });
       addText(this, cx, y + 36, info, 14, THEME.textDim).setOrigin(0.5);
@@ -98,9 +99,9 @@ export class MenuScene extends Phaser.Scene {
     const html = `
       <div style="display:flex;gap:8px;align-items:center;background:#16161f;border:2px solid #3a3848;padding:12px 16px;">
         <input id="join-code" maxlength="4" placeholder="${t('menu.codePlaceholder')}" autocomplete="off"
-          style="width:120px;font:24px ${THEME.font};text-transform:uppercase;text-align:center;letter-spacing:6px;
+          style="width:120px;font:${fontPx(24)}px ${THEME.font};text-transform:uppercase;text-align:center;letter-spacing:6px;
           background:#0b0b10;color:#d8d4cc;border:1px solid #3a3848;padding:6px;" />
-        <button id="join-go" style="font:18px ${THEME.font};padding:8px 16px;background:#8b2e2e;color:#d8d4cc;border:0;cursor:pointer;">
+        <button id="join-go" style="font:${fontPx(18)}px ${THEME.font};padding:8px 16px;background:#8b2e2e;color:#d8d4cc;border:0;cursor:pointer;">
           ${t('menu.joinGo')}</button>
       </div>`;
     this.joinBox = this.add.dom(cx, GAME_CONFIG.height - 70).createFromHTML(html);

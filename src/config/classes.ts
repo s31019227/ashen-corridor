@@ -88,7 +88,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 0,
     statMultipliers: { maxHp: 1.2, atk: 1.2, def: 1.0, moveSpeed: 1.0 },
     color: 0xb05a3c,
-    // 被動：血量越低攻擊越高，線性增加，血量降到 threshold% 時達到 maxBonus%
+    // 被動：血量越低面板攻擊力越高，線性增加，血量降到 threshold% 時達到 +maxBonus%
     passive: passive('warrior', 'bloodlust', { maxBonus: 100, threshold: 30 }),
     skills: [
       {
@@ -105,8 +105,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
         maxRank: 5,
         cooldown: [0],
         mpCost: [0],
-        // 每 interval 秒結算一次：每秒燒 selfDamage 血；每跳造成攻擊力 ratio% 傷害（不吃被動，所以倍率較高）
-        values: { selfDamage: [1], interval: [0.5], range: [35, 42, 49, 56, 63], ratio: [100, 120, 140, 160, 180] },
+        // 每 interval 秒結算一次：每秒燒 selfDamage 血；每跳造成攻擊力 ratio% 傷害（攻擊力含嗜血加成）
+        values: { selfDamage: [1], interval: [0.5], range: [35, 42, 49, 56, 63], ratio: [50, 60, 70, 80, 90] },
       },
       {
         ...keys('warrior', 'charge'),

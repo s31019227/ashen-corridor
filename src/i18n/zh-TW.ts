@@ -289,11 +289,11 @@ export const zhTW = {
   'class.warlock.role': '異常狀態・削弱防禦',
 
   'skill.warrior.bloodlust.name': '嗜血',
-  'skill.warrior.bloodlust.desc': '血量越低攻擊越高，隨損失的血量線性增加；血量降到 {threshold}% 時攻擊 +{maxBonus}%。',
+  'skill.warrior.bloodlust.desc': '血量越低攻擊力越高，隨損失的血量線性增加；血量降到 {threshold}% 時攻擊力 +{maxBonus}%。所有以攻擊力計算的傷害都會受影響。',
   'skill.warrior.heavystrike.name': '重擊',
   'skill.warrior.heavystrike.desc': '下一次普攻造成 {mult} 倍傷害，並附帶 {lifesteal}% 吸血。',
   'skill.warrior.sacrifice.name': '獻祭',
-  'skill.warrior.sacrifice.desc': '開啟後每秒失去 {selfDamage} 點血量（不會因此倒下），每 {interval} 秒對周圍 {range} 範圍內的敵人造成攻擊力 {ratio}% 的傷害（不受嗜血加成）。再按一次關閉。',
+  'skill.warrior.sacrifice.desc': '開啟後每秒失去 {selfDamage} 點血量（不會因此倒下），每 {interval} 秒對周圍 {range} 範圍內的敵人造成攻擊力 {ratio}% 的傷害。再按一次關閉。',
   'skill.warrior.charge.name': '衝鋒',
   'skill.warrior.charge.desc': '{duration} 秒內移動速度、攻擊速度、減傷提高 {bonus}%。',
   'skill.warrior.rage.name': '狂怒',

@@ -10,6 +10,7 @@ import { net } from '../net/client';
 import { loadGame } from '../save/storage';
 import { Button } from '../ui/Button';
 import { renderSkillList } from '../ui/classDetail';
+import { isPhone } from '../ui/device';
 import { addText } from '../ui/text';
 import { SCENES } from './keys';
 
@@ -72,25 +73,21 @@ export class ClassSelectScene extends Phaser.Scene {
     const left = 90;
     let y = 270;
 
-    const line = (x: number, text: string, size = 16, color: string = THEME.text) => {
+    // 依實際文字高度往下排（手機版字比較大）
+    const line = (x: number, text: string, size = 16, color: string = THEME.text, gap = 10) => {
       const obj = addText(this, x, y, text, size, color, { wordWrap: { width: 430 } });
       this.detail.add(obj);
+      y = obj.y + obj.height + gap;
       return obj;
     };
 
-    line(left, `${t(def.nameKey)}  —  ${t(def.roleKey)}`, 24);
-    y += 40;
-    line(
-      left,
-      `${t('classSelect.attack')}：${t(`attackStyle.${def.attackStyle}`)}  /  ${def.attackRange}px  /  ${def.attackInterval}s`,
-    );
-    y += 30;
+    line(left, `${t(def.nameKey)}  —  ${t(def.roleKey)}`, 24, THEME.text, 12);
+    line(left, `${t('classSelect.attack')}：${t(`attackStyle.${def.attackStyle}`)}  /  ${def.attackRange}px  /  ${def.attackInterval}s`);
     const statKeys = ['maxHp', 'maxMp', 'atk', 'def', 'moveSpeed'] as const;
-    line(left, statKeys.map((k) => `${t(`stat.${k}`)} ${stats[k]}`).join('   '), 15, THEME.textDim);
-    y += 40;
+    line(left, statKeys.map((k) => `${t(`stat.${k}`)} ${stats[k]}`).join('   '), 15, THEME.textDim, 16);
     line(left, t('classSelect.levelHint'), 13, THEME.textDim);
 
     // 右欄：被動與技能說明（各等級數值以 / 分隔）
-    renderSkillList(this, this.detail, id, 560, 262, 620);
+    renderSkillList(this, this.detail, id, 560, 262, 620, isPhone());
   }
 }

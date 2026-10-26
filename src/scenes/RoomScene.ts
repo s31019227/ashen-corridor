@@ -15,7 +15,7 @@ import { INTERACT_POS, ROOM_BOUNDS, isCombatRoom } from '../sim/world';
 import { session } from '../state/session';
 import { inputHub, KeyboardInput } from '../systems/InputSystem';
 import { formatAltarEffect } from '../ui/statText';
-import { floatText } from '../ui/text';
+import { floatText, textStyle } from '../ui/text';
 import { SCENES } from './keys';
 
 export const TOAST_EVENT = 'toast';
@@ -145,7 +145,7 @@ export class RoomScene extends Phaser.Scene {
           : this.add.circle(0, 0, 24, ROOM_COLORS[type]);
     shape.setStrokeStyle(2, 0xe8e0c8);
     const label = this.add
-      .text(0, 38, t(`room.${type}`), { fontFamily: THEME.font, fontSize: '16px', color: THEME.text })
+      .text(0, 38, t(`room.${type}`), textStyle(16))
       .setOrigin(0.5);
     const view = this.add.container(INTERACT_POS.x, INTERACT_POS.y, [shape, label]).setDepth(3);
     view.setInteractive(new Phaser.Geom.Circle(0, 0, 36), Phaser.Geom.Circle.Contains);
@@ -415,7 +415,7 @@ export class RoomScene extends Phaser.Scene {
         // Triangle 的頂點座標以左上角為原點，要用非負座標才會以 (x, y) 為中心
         const facing = this.add.triangle(R + 6, 0, 0, 0, 0, 12, 10, 6, pr.color);
         const name = this.add
-          .text(0, -R - 14, net.isMultiplayer ? pr.name : '', { fontFamily: THEME.font, fontSize: '13px', color: THEME.text })
+          .text(0, -R - 14, net.isMultiplayer ? pr.name : '', textStyle(13))
           .setOrigin(0.5);
         const container = this.add.container(p.x, p.y, [body, facing, name]).setDepth(isMe ? 11 : 10);
         v = { container, body, facing, name };

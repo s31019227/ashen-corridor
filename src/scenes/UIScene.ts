@@ -17,14 +17,12 @@ import { Bar } from '../ui/Bar';
 import { Button, CLICK_GUARD_MS } from '../ui/Button';
 import { addText } from '../ui/text';
 import { isStandalone, toggleFullscreen } from '../ui/fullscreen';
+import { isTouchPrimary } from '../ui/device';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
 import { drawMap } from './MapScene';
 import { SCENES } from './keys';
 import { TOAST_EVENT, type RoomScene } from './RoomScene';
 
-function isTouchPrimary(): boolean {
-  return typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true;
-}
 
 interface ActionButton {
   action: GameAction;
@@ -80,7 +78,7 @@ export class UIScene extends Phaser.Scene {
     this.createdAt = this.time.now;
 
     // 左上：職業、血魔條、金幣
-    addText(this, 20, 10, `${t(CLASSES[me.classId].nameKey)}${net.isMultiplayer ? `　${me.name}` : ''}`, 16, THEME.textDim);
+    addText(this, 20, 6, `${t(CLASSES[me.classId].nameKey)}${net.isMultiplayer ? `　${me.name}` : ''}`, 14, THEME.textDim);
     this.hpBar = new Bar(this, 20, 42, 280, 18, THEME.hp);
     this.mpBar = new Bar(this, 20, 64, 280, 14, THEME.mp);
     // 經驗條與等級

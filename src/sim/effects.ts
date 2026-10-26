@@ -45,7 +45,15 @@ export function hpFloor(p: PlayerEntity): number {
   return (p.stats.maxHp * pct) / 100;
 }
 
-/** 被動帶來的攻擊倍率 */
+/**
+ * 目前的攻擊力（面板攻擊力）：數值 × 被動加成。
+ * 普攻與所有以攻擊力計算的技能都用這個，被動才會一起生效。
+ */
+export function attackPower(sim: Sim, p: PlayerEntity): number {
+  return p.stats.atk * passiveAttackMult(sim, p);
+}
+
+/** 被動帶來的攻擊力倍率 */
 export function passiveAttackMult(sim: Sim, p: PlayerEntity): number {
   const classId = sim.run.players[p.id].classId;
   const passive = CLASSES[classId].passive;

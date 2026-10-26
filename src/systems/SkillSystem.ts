@@ -4,7 +4,7 @@ import { calcDamage } from '../core/damage';
 import { edgeDist } from '../core/geometry';
 import { ENEMIES } from '../config/enemies';
 import { enemyRadius, hitEnemy } from '../sim/combat';
-import { addBuff } from '../sim/effects';
+import { addBuff, attackPower } from '../sim/effects';
 import type { PlayerEntity, Sim } from '../sim/types';
 
 export interface SkillContext {
@@ -106,6 +106,6 @@ export function updateToggles(sim: Sim, p: PlayerEntity, dt: number) {
   const ratio = rankValue(skill.values.ratio, rank);
   for (const e of sim.world.enemies) {
     if (!e.alive || edgeDist(p, PLAYER_CONFIG.radius, e, enemyRadius(e)) > range) continue;
-    hitEnemy(sim, p.id, e, calcDamage((p.stats.atk * ratio) / 100, ENEMIES[e.defId].def), 0, false);
+    hitEnemy(sim, p.id, e, calcDamage((attackPower(sim, p) * ratio) / 100, ENEMIES[e.defId].def), 0, false);
   }
 }

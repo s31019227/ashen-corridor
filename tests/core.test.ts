@@ -15,7 +15,7 @@ import { ENEMIES } from '../src/config/enemies';
 import { stepSim } from '../src/sim/step';
 import { applyAction } from '../src/sim/actions';
 import { hitEnemy, skillTarget } from '../src/sim/combat';
-import { damageTakenMult, moveSpeed, passiveAttackMult } from '../src/sim/effects';
+import { attackPower, damageTakenMult, moveSpeed, passiveAttackMult } from '../src/sim/effects';
 import { damagePlayer } from '../src/sim/enemies';
 import { addXp, canLearn, learnSkill, skillPoints } from '../src/core/leveling';
 import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
@@ -338,11 +338,13 @@ describe('warrior skills', () => {
     return { sim, p, e: sim.world.enemies[0] };
   };
 
-  it('passive gives up to +100% attack at 30% hp', () => {
+  it('passive gives up to +100% attack power at 30% hp', () => {
     const { sim, p } = setup();
     expect(passiveAttackMult(sim, p)).toBe(1);
+    expect(attackPower(sim, p)).toBe(p.stats.atk);
     p.hp = p.stats.maxHp * 0.3;
     expect(passiveAttackMult(sim, p)).toBeCloseTo(2);
+    expect(attackPower(sim, p)).toBeCloseTo(p.stats.atk * 2);
     p.hp = p.stats.maxHp * 0.65;
     expect(passiveAttackMult(sim, p)).toBeCloseTo(1.5);
   });
@@ -439,5 +441,29 @@ describe('warrior skill scaling', () => {
     applyAction(sim, 'a', { k: 'skill', i: 1 });
     stepSim(sim, 0.51); // 每 0.5 秒結算一次
     expect(e.hp).toBeLessThan(hp0);
+  });
+});
+
+describe('sacrifice uses attack power', () => {
+  it('deals more damage at low hp because of bloodlust', () => {
+    const hit = (hpRatio: number) => {
+      const run = createRun([np('warrior', 'a')], 3, 'a');
+      const mob = run.map.cells.find((c) => c.type === 'mob')!;
+      const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a'])), moves: {}, events: [] };
+      run.players.a.skillRanks = [0, 1, 0, 0];
+      run.players.a.autoAttack = false;
+      const p = sim.world.players.a;
+      p.hp = p.stats.maxHp * hpRatio;
+      const e = sim.world.enemies.find((en) => en.defId === 'warden') ?? sim.world.enemies[0];
+      e.hp = e.maxHp = 100000;
+      e.castLock = 99;
+      e.x = p.x + 40;
+      e.y = p.y;
+      sim.world.enemies = [e];
+      applyAction(sim, 'a', { k: 'skill', i: 1 });
+      stepSim(sim, 0.51);
+      return 100000 - e.hp;
+    };
+    expect(hit(0.3)).toBeGreaterThan(hit(1));
   });
 });

@@ -7,7 +7,7 @@ import { calcDamage } from '../core/damage';
 import { edgeDist } from '../core/geometry';
 import { addXp } from '../core/leveling';
 import { addGold } from '../core/runState';
-import { attackInterval, attackRange, passiveAttackMult } from './effects';
+import { attackInterval, attackPower, attackRange } from './effects';
 import { onLevelUp } from './world';
 import { selectTarget } from '../core/targeting';
 import type { EnemyEntity, PlayerEntity, Sim } from './types';
@@ -87,10 +87,10 @@ function tryAttack(sim: Sim, p: PlayerEntity) {
   const styleMult = useMelee ? (def.meleeDamageMult ?? 1) : (def.rangedDamageMult ?? 1);
   const empower = p.empower;
   p.empower = null;
-  const mult = styleMult * passiveAttackMult(sim, p) * (empower?.mult ?? 1);
+  const mult = styleMult * (empower?.mult ?? 1);
   const lifesteal = empower?.lifesteal ?? 0;
   const crit = Math.random() * 100 < p.stats.critChance;
-  let damage = calcDamage(p.stats.atk * mult, ENEMIES[target.defId].def);
+  let damage = calcDamage(attackPower(sim, p) * mult, ENEMIES[target.defId].def);
   if (crit) damage = Math.round(damage * PLAYER_CONFIG.critMultiplier);
 
   if (useMelee) {

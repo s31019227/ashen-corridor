@@ -1,8 +1,16 @@
 import Phaser from 'phaser';
 import { THEME } from '../config/theme';
+import { isPhone, PHONE_FONT_SCALE } from './device';
+
+const FONT_SCALE = isPhone() ? PHONE_FONT_SCALE : 1;
+
+/** 實際字級：手機上放大，最多只多放大 20px 的部分，標題不會過大 */
+export function fontPx(size: number): number {
+  return Math.round(size + (FONT_SCALE - 1) * Math.min(size, 20));
+}
 
 export function textStyle(size = 18, color = THEME.text, extra: Phaser.Types.GameObjects.Text.TextStyle = {}) {
-  return { fontFamily: THEME.font, fontSize: `${size}px`, color, ...extra } as Phaser.Types.GameObjects.Text.TextStyle;
+  return { fontFamily: THEME.font, fontSize: `${fontPx(size)}px`, color, ...extra } as Phaser.Types.GameObjects.Text.TextStyle;
 }
 
 export function addText(

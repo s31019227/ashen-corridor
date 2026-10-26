@@ -9,7 +9,7 @@ import { net } from '../net/client';
 import type { HostState } from '../net/protocol';
 import { Button } from '../ui/Button';
 import { renderSkillList } from '../ui/classDetail';
-import { addText } from '../ui/text';
+import { addText, fontPx } from '../ui/text';
 import { goToMenu } from './flow';
 import { SCENES } from './keys';
 
@@ -87,8 +87,9 @@ export class LobbyScene extends Phaser.Scene {
       }
       this.add2(this.add.circle(x + 28, y, 12, CLASSES[p.classId].color).setStrokeStyle(3, p.color));
       const tags = [p.id === s.hostId ? t('lobby.hostTag') : '', p.id === net.myId ? t('lobby.youTag') : ''].filter(Boolean).join(' ');
-      this.add2(addText(this, x + 52, y, `${p.name} ${tags}`, 18).setOrigin(0, 0.5));
-      this.add2(addText(this, x + 300, y, t(CLASSES[p.classId].nameKey), 18, THEME.textDim).setOrigin(0, 0.5));
+      const name = this.add2(addText(this, x + 52, y, p.name, 18).setOrigin(0, 0.5));
+      this.add2(addText(this, x + 60 + name.width, y, tags, 13, THEME.textGold).setOrigin(0, 0.5));
+      this.add2(addText(this, x + 420, y, t(CLASSES[p.classId].nameKey), 16, THEME.textDim).setOrigin(1, 0.5));
       this.add2(
         addText(this, x + 500, y, p.ready ? t('lobby.ready') : t('lobby.notReady'), 16, p.ready ? THEME.textGreen : THEME.textDim).setOrigin(
           1,
@@ -107,25 +108,23 @@ export class LobbyScene extends Phaser.Scene {
     const me = s.lobby.find((p) => p.id === net.myId);
     if (!me) return;
     const left = 680;
-    this.add2(addText(this, left, 94, t('lobby.pickClass'), 18, THEME.textDim));
+    this.add2(addText(this, left, 100, t('lobby.pickClass'), 16, THEME.textDim));
+    // 7 個職業排成一列，下面留空間給技能說明
     CLASS_IDS.forEach((id, i) => {
-      const col = i % 4;
-      const row = Math.floor(i / 4);
-      const x = left + 60 + col * 130;
-      const y = 160 + row * 92;
+      const x = left + 38 + i * 80;
+      const y = 162;
       const def = CLASSES[id];
       const selected = me.classId === id;
       const card = this.add2(
-        this.add.rectangle(x, y, 118, 80, THEME.panel).setStrokeStyle(selected ? 3 : 1, selected ? THEME.gold : THEME.panelBorder),
+        this.add.rectangle(x, y, 74, 72, THEME.panel).setStrokeStyle(selected ? 3 : 1, selected ? THEME.gold : THEME.panelBorder),
       );
       card.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.pickClass(id));
-      this.add2(this.add.circle(x, y - 18, 14, def.color));
-      this.add2(addText(this, x, y + 10, t(def.nameKey), 17).setOrigin(0.5));
-      this.add2(addText(this, x, y + 30, t(`attackStyle.${def.attackStyle}`), 12, THEME.textDim).setOrigin(0.5));
+      this.add2(this.add.circle(x, y - 14, 12, def.color));
+      this.add2(addText(this, x, y + 16, t(def.nameKey), 16).setOrigin(0.5));
     });
     const def = CLASSES[me.classId];
-    this.add2(addText(this, left, 372, `${t(def.nameKey)}：${t(def.roleKey)}`, 17, THEME.text));
-    renderSkillList(this, this.dynamic, me.classId, left, 398, 540, true);
+    const head = this.add2(addText(this, left, 212, `${t(def.nameKey)}：${t(def.roleKey)}（${t(`attackStyle.${def.attackStyle}`)}）`, 16, THEME.text));
+    renderSkillList(this, this.dynamic, me.classId, left, head.y + head.height + 6, 540, true);
   }
 
   private renderButtons(s: HostState) {
@@ -164,8 +163,8 @@ export class LobbyScene extends Phaser.Scene {
     const html = `
       <div style="display:flex;gap:6px;align-items:center;">
         <input id="lobby-name" maxlength="12" value="${escapeHtml(net.myName)}" autocomplete="off"
-          style="width:170px;font:16px ${THEME.font};background:#0b0b10;color:#d8d4cc;border:1px solid #3a3848;padding:6px;" />
-        <button id="lobby-name-ok" style="font:15px ${THEME.font};padding:7px 12px;background:#24222e;color:#d8d4cc;border:1px solid #3a3848;cursor:pointer;">
+          style="width:170px;font:${fontPx(16)}px ${THEME.font};background:#0b0b10;color:#d8d4cc;border:1px solid #3a3848;padding:6px;" />
+        <button id="lobby-name-ok" style="font:${fontPx(15)}px ${THEME.font};padding:7px 12px;background:#24222e;color:#d8d4cc;border:1px solid #3a3848;cursor:pointer;">
           ${t('lobby.rename')}</button>
       </div>`;
     const box = this.add.dom(480, GAME_CONFIG.height - 44).createFromHTML(html);

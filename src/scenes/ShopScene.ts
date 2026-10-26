@@ -11,6 +11,7 @@ import { skillPoints } from '../core/leveling';
 import { playerStats } from '../core/runState';
 import { statDiff, STAT_KEYS } from '../core/stats';
 import { renderSkillList } from '../ui/classDetail';
+import { attackPower } from '../sim/effects';
 import { EQUIP_SLOTS, POTION_IDS, type PotionId } from '../core/types';
 import { t, tEvent } from '../i18n';
 import { net } from '../net/client';
@@ -19,6 +20,10 @@ import { Button } from '../ui/Button';
 import { addBackdrop, addPanel } from '../ui/Panel';
 import { formatAltarEffect, formatStats, formatStatValue } from '../ui/statText';
 import { addText } from '../ui/text';
+import { isPhone } from '../ui/device';
+
+/** 手機字比較大，列與列的間距跟著放大 */
+const S = isPhone() ? 1.18 : 1;
 import { SCENES } from './keys';
 
 type ShopMode = 'shop' | 'equipment';
@@ -118,16 +123,16 @@ export class ShopScene extends Phaser.Scene {
       .filter((it): it is ShopItem => it !== null && it.kind === 'equipment');
     items.forEach((item, i) => {
       const def = EQUIPMENT[item.id];
-      const y = 140 + i * 66;
+      const y = 140 + i * 66 * S;
       const owned = isOwned(run, item);
       const usable = canEquip(def, run.classId);
-      this.add2(this.add.rectangle(400, y, 640, 60, THEME.button, 0.6));
-      const name = this.add2(addText(this, 96, y - 18, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
-      this.add2(addText(this, 104 + name.width, y - 17, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
-      this.add2(addText(this, 96, y + 2, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
+      this.add2(this.add.rectangle(400, y, 640, 60 * S, THEME.button, 0.6));
+      const name = this.add2(addText(this, 96, y - 18 * S, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, 104 + name.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
+      this.add2(addText(this, 96, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
       if (!owned && usable) {
         const [text, color] = this.compareText(item.id);
-        this.add2(addText(this, 96, y + 21, text, 13, color).setOrigin(0, 0.5));
+        this.add2(addText(this, 96, y + 21 * S, text, 13, color).setOrigin(0, 0.5));
       }
       this.add2(addText(this, 520, y, t('shop.price', { price: item.price }), 16, THEME.textGold).setOrigin(1, 0.5));
       const label = owned ? t('shop.equipped') : usable ? t('shop.buy') : t('shop.wrongClass');
@@ -147,14 +152,14 @@ export class ShopScene extends Phaser.Scene {
     list.forEach((potionId, i) => {
       const def = POTIONS[potionId];
       const item = resolveShopItem(potionItemId(potionId))!;
-      const y = 140 + i * 58;
+      const y = 140 + i * 58 * S;
       const unlocked = run.unlockedPotions.includes(potionId);
       const carried = isCarried(run, potionId);
-      this.add2(this.add.rectangle(400, y, 640, 52, THEME.button, 0.6));
+      this.add2(this.add.rectangle(400, y, 640, 52 * S, THEME.button, 0.6));
       const name = carried ? `${t(def.nameKey)}（${t('shop.potionCurrent')}）` : t(def.nameKey);
-      this.add2(addText(this, 96, y - 11, name, 17, carried ? THEME.textGreen : THEME.text).setOrigin(0, 0.5));
+      this.add2(addText(this, 96, y - 11 * S, name, 17, carried ? THEME.textGreen : THEME.text).setOrigin(0, 0.5));
       this.add2(
-        addText(this, 96, y + 12, t('potion.desc', { hp: def.hpPercent, mp: def.mpPercent, cd: def.cooldown }), 13, THEME.textDim).setOrigin(0, 0.5),
+        addText(this, 96, y + 12 * S, t('potion.desc', { hp: def.hpPercent, mp: def.mpPercent, cd: def.cooldown }), 13, THEME.textDim).setOrigin(0, 0.5),
       );
       const priceText = unlocked ? t('shop.unlocked') : t('shop.price', { price: def.price });
       this.add2(addText(this, 520, y, priceText, 16, unlocked ? THEME.textGreen : THEME.textGold).setOrigin(1, 0.5));
@@ -169,7 +174,7 @@ export class ShopScene extends Phaser.Scene {
       }
       this.add2(btn);
     });
-    this.add2(addText(this, 96, 140 + list.length * 58 - 8, t('shop.potionRule'), 13, THEME.textDim, { wordWrap: { width: 620 } }));
+    this.add2(addText(this, 96, 140 + list.length * 58 * S - 8, t('shop.potionRule'), 13, THEME.textDim, { wordWrap: { width: 620 } }));
   }
 
   /** 標籤：武器顯示限定職業，防具顯示類型 */
@@ -216,22 +221,25 @@ export class ShopScene extends Phaser.Scene {
     if (this.tab === 'skills') {
       const me = net.me!;
       this.add2(addText(this, 96, 112, `Lv.${me.level}　${t('hud.skillPoints', { n: skillPoints(me) })}`, 16, THEME.textGold));
-      renderSkillList(this, this.content, me.classId, 96, 146, 610, false, me.skillRanks);
+      renderSkillList(this, this.content, me.classId, 96, 146, 610, isPhone(), me.skillRanks);
       return;
     }
     const run = net.me!;
-    const stats = playerStats(run);
+    const stats = { ...playerStats(run) };
+    // 面板攻擊力含被動加成（例如戰士嗜血）
+    const me = net.meEntity;
+    if (me && net.world) stats.atk = Math.round(attackPower({ run: net.run!, world: net.world, moves: {}, events: [] }, me));
     this.add2(addText(this, 96, 110, t('shop.finalStats'), 18, THEME.textDim));
     STAT_KEYS.forEach((k, i) => {
-      this.add2(addText(this, 96, 145 + i * 29, `${t(`stat.${k}`)}`, 16, THEME.textDim));
-      this.add2(addText(this, 260, 145 + i * 29, formatStatValue(k, stats[k]), 16));
+      this.add2(addText(this, 96, 145 + i * 29 * S, `${t(`stat.${k}`)}`, 16, THEME.textDim));
+      this.add2(addText(this, 260, 145 + i * 29 * S, formatStatValue(k, stats[k]), 16));
     });
-    const ay = 145 + STAT_KEYS.length * 29 + 16;
+    const ay = 145 + STAT_KEYS.length * 29 * S + 16;
     this.add2(addText(this, 96, ay, t('shop.altarEffects'), 18, THEME.textDim));
     const effects = run.altarEffects.map(getAltarEffect).filter((e) => e !== undefined);
-    if (effects.length === 0) this.add2(addText(this, 96, ay + 34, t('shop.none'), 15, THEME.textDim));
+    if (effects.length === 0) this.add2(addText(this, 96, ay + 34 * S, t('shop.none'), 15, THEME.textDim));
     effects.forEach((e, i) => {
-      this.add2(addText(this, 96, ay + 34 + i * 26, `${t(e.nameKey)}：${formatAltarEffect(e)}`, 15, THEME.textGold));
+      this.add2(addText(this, 96, ay + (34 + i * 26) * S, `${t(e.nameKey)}：${formatAltarEffect(e)}`, 15, THEME.textGold));
     });
   }
 
@@ -242,16 +250,16 @@ export class ShopScene extends Phaser.Scene {
     const w = 400;
     this.add2(addText(this, x, 70, t('hud.gold', { gold: run.gold }), 20, THEME.textGold));
     EQUIP_SLOTS.forEach((slot, i) => {
-      const y = 130 + i * 48;
+      const y = 130 + i * 48 * S;
       const itemId = run.equipment[slot];
       const def = itemId ? EQUIPMENT[itemId] : null;
-      this.add2(this.add.rectangle(x + w / 2, y, w, 42, THEME.button, 0.6));
+      this.add2(this.add.rectangle(x + w / 2, y, w, 42 * S, THEME.button, 0.6));
       this.add2(addText(this, x + 10, y, t(`slot.${slot}`), 15, THEME.textDim).setOrigin(0, 0.5));
-      this.add2(addText(this, x + 70, y - 9, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, x + 70, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
       const statsLine = def ? formatStats(def.stats, t('shop.noStats')) : t('shop.slotEmpty');
-      this.add2(addText(this, x + 70, y + 10, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, x + 70, y + 10 * S, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
     });
-    const py = 130 + EQUIP_SLOTS.length * 48;
+    const py = 130 + EQUIP_SLOTS.length * 48 * S;
     this.add2(addText(this, x, py, t('shop.potionSlots'), 16, THEME.textDim));
     run.potions.forEach((potionId, i) => {
       const cx = x + 30 + i * 68;

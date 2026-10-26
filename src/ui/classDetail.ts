@@ -51,8 +51,8 @@ export function renderSkillList(
   const descSize = compact ? 12 : 13;
   const gap = compact ? 6 : 10;
   const entry = (head: string, desc: string, color: string) => {
-    const h = addText(scene, x, y, head, headSize, color);
-    const d = addText(scene, x, y + headSize + 4, desc, descSize, THEME.textDim, { wordWrap: { width }, lineSpacing: 2 });
+    const h = addText(scene, x, y, head, headSize, color, { wordWrap: { width } });
+    const d = addText(scene, x, y + h.height + 2, desc, descSize, THEME.textDim, { wordWrap: { width }, lineSpacing: 2 });
     container.add([h, d]);
     y = d.y + d.height + gap;
   };
