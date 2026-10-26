@@ -86,7 +86,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackRange: 34,
     attackInterval: 0.8,
     attackKnockback: 0,
-    statMultipliers: { maxHp: 1.2, atk: 1.2, def: 1.0, moveSpeed: 1.0 },
+    // 魔力上限 30（基礎 60 × 0.5）
+    statMultipliers: { maxHp: 1.2, maxMp: 0.5, atk: 1.2, def: 1.0, moveSpeed: 1.0 },
     color: 0xb05a3c,
     // 被動：血量越低面板攻擊力越高，線性增加，血量降到 threshold% 時達到 +maxBonus%
     passive: passive('warrior', 'bloodlust', { maxBonus: 100, threshold: 30 }),
@@ -97,7 +98,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
         maxRank: 5,
         cooldown: [5, 4, 3, 2, 1],
         mpCost: [5],
-        values: { mult: [2], lifesteal: [50] },
+        values: { mult: [2], lifesteal: [10, 20, 30, 40, 50] },
       },
       {
         ...keys('warrior', 'sacrifice'),
@@ -124,7 +125,7 @@ export const CLASSES: Record<ClassId, ClassDef> = {
       maxRank: 3,
       // 每級冷卻 −5 秒
       cooldown: [60, 55, 50],
-      mpCost: [30],
+      mpCost: [20],
       values: { hpFloor: [30], range: [100], bonus: [50], duration: [15] },
     },
   },

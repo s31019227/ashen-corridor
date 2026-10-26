@@ -4,9 +4,10 @@ import { learnSkill } from '../core/leveling';
 import { ROOM_EVENT_CONFIG } from '../config/map';
 import { POTIONS } from '../config/potions';
 import { cdReady, cdTrigger } from '../core/cooldown';
-import { buyItem, carryPotion, resolveShopItem } from '../core/inventory';
+import { buyItem, carryPotion, resolveShopItem, sellEquipped } from '../core/inventory';
+import { EQUIPMENT } from '../config/equipment';
 import { addGold } from '../core/runState';
-import { POTION_IDS, type PotionId } from '../core/types';
+import { EQUIP_SLOTS, POTION_IDS, type EquipSlot, type PotionId } from '../core/types';
 import { runSkill } from '../systems/SkillSystem';
 import type { PlayerAction, Sim } from './types';
 import { refreshPlayerStats } from './world';
@@ -94,6 +95,15 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       }
       const keys = { noGold: 'shop.noGold', owned: 'shop.owned', wrongClass: 'shop.wrongClass', unknown: 'shop.owned' };
       return toast(sim, pid, keys[result], COLOR.red);
+    }
+    case 'sell': {
+      const slot = a.slot as EquipSlot;
+      if (!inShop || !EQUIP_SLOTS.includes(slot)) return;
+      const itemId = pr.equipment[slot];
+      if (!itemId) return;
+      const gold = sellEquipped(pr, slot);
+      refreshPlayerStats(sim, pid);
+      return toast(sim, pid, 'shop.sold', COLOR.gold, { name: EQUIPMENT[itemId].nameKey, gold });
     }
     case 'carry': {
       const potionId = a.potion as PotionId;

@@ -6,7 +6,7 @@ import { GAME_CONFIG } from '../config/game';
 import { POTIONS } from '../config/potions';
 import { potionItemId } from '../config/shop';
 import { THEME } from '../config/theme';
-import { isCarried, isOwned, resolveShopItem, type ShopItem } from '../core/inventory';
+import { isCarried, isOwned, resolveShopItem, sellPrice, type ShopItem } from '../core/inventory';
 import { skillPoints } from '../core/leveling';
 import { playerStats } from '../core/runState';
 import { statDiff, STAT_KEYS } from '../core/stats';
@@ -50,6 +50,8 @@ export class ShopScene extends Phaser.Scene {
   private tab: Tab = 'equipment';
   private content!: Phaser.GameObjects.Container;
   private lastKey = '';
+  /** 第一次按「賣」後等待確認的部位 */
+  private sellArmed: string | null = null;
   private message!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -125,28 +127,47 @@ export class ShopScene extends Phaser.Scene {
     else this.renderPotionStock();
   }
 
+  /** 裝備依部位分組：左邊一欄是部位名稱（同部位合併），右邊是商品 */
   private renderEquipmentStock() {
     const run = net.me!;
     const items = this.stock
       .map(resolveShopItem)
-      .filter((it): it is ShopItem => it !== null && it.kind === 'equipment');
+      .filter((it): it is ShopItem => it !== null && it.kind === 'equipment')
+      .sort((a, b) => {
+        const da = EQUIPMENT[a.id];
+        const db = EQUIPMENT[b.id];
+        return EQUIP_SLOTS.indexOf(da.slot) - EQUIP_SLOTS.indexOf(db.slot) || da.tier - db.tier || da.price - db.price;
+      });
+    const step = 64 * S;
+    const top = 136;
+    let groupStart = 0;
     items.forEach((item, i) => {
       const def = EQUIPMENT[item.id];
-      const y = 140 + i * 66 * S;
+      const y = top + i * step;
       const owned = isOwned(run, item);
       const usable = canEquip(def, run.classId);
-      this.add2(this.add.rectangle(400, y, 640, 60 * S, THEME.button, 0.6));
-      this.add2(addSlotIcon(this, 112, y, def.slot, def.armorType, 40 * S, !usable));
-      const tx = 112 + 26 * S;
+      this.add2(this.add.rectangle(436, y, 568, step - 6, THEME.button, 0.6));
+      this.add2(addSlotIcon(this, 172, y, def.slot, def.armorType, 40 * S, !usable));
+      const tx = 172 + 26 * S;
       const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
       this.add2(addText(this, tx + 8 + name.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
       this.add2(addText(this, tx, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
       if (!owned && usable) this.renderCompare(item.id, tx, y + 21 * S);
-      this.add2(addText(this, 520, y, t('shop.price', { price: item.price }), 16, THEME.textGold).setOrigin(1, 0.5));
+      this.add2(addText(this, 590, y - 12 * S, t('shop.price', { price: item.price }), 15, THEME.textGold).setOrigin(1, 0.5));
       const label = owned ? t('shop.equipped') : usable ? t('shop.buy') : t('shop.wrongClass');
-      const btn = new Button(this, 640, y, label, () => this.buy(item), { width: 120, height: 38, fontSize: 16 });
+      const btn = new Button(this, 656, y, label, () => this.buy(item), { width: 100, height: 36, fontSize: 15 });
       btn.setEnabled(!owned && usable && run.gold >= item.price);
       this.add2(btn);
+
+      // 同部位的最後一個商品：畫出合併的部位欄
+      const next = items[i + 1];
+      if (!next || EQUIPMENT[next.id].slot !== def.slot) {
+        const y0 = top + groupStart * step - step / 2 + 3;
+        const y1 = y + step / 2 - 3;
+        this.add2(this.add.rectangle(112, (y0 + y1) / 2, 60, y1 - y0, 0x1c1b24).setStrokeStyle(1, THEME.panelBorder));
+        this.add2(addText(this, 112, (y0 + y1) / 2, t(`slot.${def.slot}`), 15, THEME.textGold).setOrigin(0.5));
+        groupStart = i + 1;
+      }
     });
   }
 
@@ -186,13 +207,12 @@ export class ShopScene extends Phaser.Scene {
     this.add2(addText(this, 96, 140 + list.length * 58 * S - 8, t('shop.potionRule'), 13, THEME.textDim, { wordWrap: { width: 620 } }));
   }
 
-  /** 標籤：武器顯示限定職業，防具顯示類型 */
+  /** 部位已經在左欄分組顯示，這裡只標限定職業或防具類型 */
   private itemTag(itemId: string): string {
     const def = EQUIPMENT[itemId];
-    const slot = t(`slot.${def.slot}`);
-    if (def.classes) return `${slot}・${t('shop.classOnly', { classes: def.classes.map((c) => t(CLASSES[c].nameKey)).join('、') })}`;
-    if (def.armorType) return `${slot}・${t(`armor.${def.armorType}`)}`;
-    return slot;
+    if (def.classes) return t('shop.classOnly', { classes: def.classes.map((c) => t(CLASSES[c].nameKey)).join('、') });
+    if (def.armorType) return t(`armor.${def.armorType}`);
+    return '';
   }
 
   /** 與同欄位目前裝備比較：增加的（綠）與減少的（紅）分開顯示 */
@@ -279,6 +299,26 @@ export class ShopScene extends Phaser.Scene {
       this.add2(addText(this, nx, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
       const statsLine = def ? formatStats(def.stats, t('shop.noStats')) : t('shop.slotEmpty');
       this.add2(addText(this, nx, y + 10 * S, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
+      // 商店中可以賣出身上的裝備（購買價的 75%），按兩下確認
+      if (this.mode === 'shop' && itemId) {
+        const price = sellPrice(itemId);
+        const sell: Button = new Button(this, x + w - 44, y, t('shop.sell', { gold: price }), () => {
+          if (this.sellArmed !== slot) {
+            this.sellArmed = slot;
+            sell.setText(t('shop.sellConfirm'));
+            this.time.delayedCall(2000, () => {
+              if (this.sellArmed === slot && sell.active) {
+                this.sellArmed = null;
+                sell.setText(t('shop.sell', { gold: price }));
+              }
+            });
+            return;
+          }
+          this.sellArmed = null;
+          net.act({ k: 'sell', slot });
+        }, { width: 76, height: 30 * S, fontSize: 13, color: 0x3a2a1a });
+        this.add2(sell);
+      }
     });
     const py = 130 + EQUIP_SLOTS.length * 48 * S;
     this.add2(addText(this, x, py, t('shop.potionSlots'), 16, THEME.textDim));

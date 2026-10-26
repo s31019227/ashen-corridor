@@ -152,6 +152,7 @@ export type PlayerAction =
   | { k: 'auto'; on: boolean }
   | { k: 'interact' }
   | { k: 'buy'; item: string }
+  | { k: 'sell'; slot: string }
   | { k: 'carry'; potion: string }
   | { k: 'altar'; cellId: number };
 

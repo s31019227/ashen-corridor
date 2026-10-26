@@ -1,7 +1,8 @@
 import { EQUIPMENT, canEquip } from '../config/equipment';
 import { POTIONS } from '../config/potions';
+import { SHOP_CONFIG } from '../config/shop';
 import type { PlayerRun } from './runState';
-import { POTION_IDS, type PotionId } from './types';
+import { POTION_IDS, type EquipSlot, type PotionId } from './types';
 
 export type ShopItem =
   | { kind: 'equipment'; id: string; price: number; nameKey: string }
@@ -61,4 +62,20 @@ export function carryPotion(run: PlayerRun, potionId: PotionId): boolean {
   if (!run.unlockedPotions.includes(potionId) || isCarried(run, potionId)) return false;
   putPotion(run, potionId);
   return true;
+}
+
+/** 賣出價格：購買價 × sellRate（無條件捨去） */
+export function sellPrice(itemId: string): number {
+  const def = EQUIPMENT[itemId];
+  return def ? Math.floor(def.price * SHOP_CONFIG.sellRate) : 0;
+}
+
+/** 賣出身上某部位的裝備，回傳拿到的金幣（沒有裝備時回傳 0） */
+export function sellEquipped(run: PlayerRun, slot: EquipSlot): number {
+  const itemId = run.equipment[slot];
+  if (!itemId) return 0;
+  const gold = sellPrice(itemId);
+  run.equipment[slot] = null;
+  run.gold += gold;
+  return gold;
 }

@@ -352,7 +352,7 @@ describe('warrior skills', () => {
   it('heavy strike empowers the next attack with lifesteal', () => {
     const { sim, p, e } = setup();
     applyAction(sim, 'a', { k: 'skill', i: 0 });
-    expect(p.empower).toEqual({ mult: 2, lifesteal: 50 });
+    expect(p.empower).toEqual({ mult: 2, lifesteal: 10 });
     e.x = p.x + 40;
     e.y = p.y;
     sim.world.enemies = [e];
@@ -465,5 +465,30 @@ describe('sacrifice uses attack power', () => {
       return 100000 - e.hp;
     };
     expect(hit(0.3)).toBeGreaterThan(hit(1));
+  });
+});
+
+describe('selling and warrior tuning', () => {
+  it('sells equipped gear for 75% only in a shop room', () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const sim: Sim = { run, world: createWorld(run, run.map.startId, null, new Set(['a'])), moves: {}, events: [] };
+    const pr = run.players.a;
+    pr.equipment.chest = 'ironguard_chest'; // 45 金幣
+    const gold = pr.gold;
+    applyAction(sim, 'a', { k: 'sell', slot: 'chest' });
+    expect(pr.equipment.chest).toBeNull();
+    expect(pr.gold).toBe(gold + Math.floor(45 * 0.75));
+
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    sim.world = createWorld(run, mob.id, null, new Set(['a']));
+    pr.equipment.helmet = 'ironguard_helmet';
+    applyAction(sim, 'a', { k: 'sell', slot: 'helmet' });
+    expect(pr.equipment.helmet).toBe('ironguard_helmet');
+  });
+
+  it('warrior has 30 max mana, ult costs 20, heavy strike lifesteal 10-50%', () => {
+    expect(computeStats('warrior', createPlayerRun(np('warrior')).equipment).maxMp).toBe(30);
+    expect(CLASSES.warrior.ultimate.mpCost).toEqual([20]);
+    expect(CLASSES.warrior.skills[0].values.lifesteal).toEqual([10, 20, 30, 40, 50]);
   });
 });

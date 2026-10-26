@@ -8,4 +8,6 @@ export const SHOP_CONFIG = {
   start: { equipmentCount: 6, potionCount: 3, maxTier: 1 },
   /** 一般商店：所有裝備都可能出現 */
   general: { equipmentCount: 6, potionCount: 2, maxTier: 2 },
+  /** 賣出裝備時拿回購買價的比例 */
+  sellRate: 0.75,
 };
