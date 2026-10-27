@@ -71,13 +71,16 @@ const keys = (classId: ClassId, id: string) => ({
   descKey: `skill.${classId}.${id}.desc`,
 });
 
-/** 尚未實作效果的技能（白板） */
-function skill(classId: ClassId, id: string, cooldown: number, mpCost: number): SkillDef {
-  return { ...keys(classId, id), kind: 'active', maxRank: 5, cooldown: [cooldown], mpCost: [mpCost], values: {} };
-}
-
-function ult(classId: ClassId, id: string, cooldown: number, mpCost: number): SkillDef {
-  return { ...skill(classId, id, cooldown, mpCost), maxRank: 3 };
+/** 施放型技能（maxRank 預設 5，大招請傳 3） */
+function active(
+  classId: ClassId,
+  id: string,
+  cooldown: number[],
+  mpCost: number[],
+  values: Record<string, number[]>,
+  maxRank = 5,
+): SkillDef {
+  return { ...keys(classId, id), kind: 'active', maxRank, cooldown, mpCost, values };
 }
 
 function passive(classId: ClassId, id: string, values: Record<string, number> = {}): PassiveDef {
@@ -198,9 +201,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 0,
     statMultipliers: { maxHp: 0.9, atk: 1.1, def: 0.8, moveSpeed: 1.1 },
     color: 0x5f8a4a,
-    passive: passive('ranger', 'keeneye'),
-    skills: [skill('ranger', 'multishot', 6, 10), skill('ranger', 'roll', 8, 6), skill('ranger', 'snare', 12, 12)],
-    ultimate: ult('ranger', 'arrowrain', 60, 40),
+    // 被動：與目標距離越遠傷害越高，在普攻射程邊緣時 +maxBonus%
+    passive: passive('ranger', 'keeneye', { maxBonus: 30 }),
+    skills: [
+      active('ranger', 'multishot', [6], [10], { count: [3, 3, 4, 4, 5], ratio: [80, 90, 100, 110, 120] }),
+      active('ranger', 'roll', [8, 7.5, 7, 6.5, 6], [6], { distance: [130], speed: [30], duration: [1.5] }),
+      active('ranger', 'snare', [12], [12], { range: [350], root: [1.5, 1.75, 2, 2.25, 2.5], ratio: [80, 95, 110, 125, 140] }),
+    ],
+    ultimate: active('ranger', 'arrowrain', [60, 50, 40], [30], { range: [600], radius: [140], waves: [5], ratio: [60, 80, 100] }, 3),
   },
   assassin: {
     id: 'assassin',
@@ -215,9 +223,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     rangedDamageMult: 0.9,
     statMultipliers: { maxHp: 0.85, atk: 1.15, def: 0.8, moveSpeed: 1.2 },
     color: 0x6a4a7a,
-    passive: passive('assassin', 'backstab'),
-    skills: [skill('assassin', 'fanknives', 6, 10), skill('assassin', 'shadowstep', 9, 12), skill('assassin', 'poison', 12, 10)],
-    ultimate: ult('assassin', 'deathmark', 60, 40),
+    // 被動：攻擊「目標不是自己」的敵人時傷害 +bonus%
+    passive: passive('assassin', 'backstab', { bonus: 30 }),
+    skills: [
+      active('assassin', 'fanknives', [6], [10], { range: [250], ratio: [70, 80, 90, 100, 110] }),
+      active('assassin', 'shadowstep', [10, 9, 8, 7, 6], [12], { range: [350], mult: [1.5] }),
+      active('assassin', 'poison', [12], [10], { duration: [6], dot: [15, 20, 25, 30, 35], dotTime: [3] }),
+    ],
+    ultimate: active('assassin', 'deathmark', [60, 50, 40], [30], { range: [400], delay: [3], ratio: [300, 400, 500] }, 3),
   },
   priest: {
     id: 'priest',
@@ -229,9 +242,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 60,
     statMultipliers: { maxHp: 1.0, maxMp: 1.3, atk: 0.8, def: 1.0, moveSpeed: 1.0 },
     color: 0xd8c890,
-    passive: passive('priest', 'grace'),
-    skills: [skill('priest', 'heal', 8, 15), skill('priest', 'repel', 10, 12), skill('priest', 'blessing', 15, 18)],
-    ultimate: ult('priest', 'sanctuary', 75, 50),
+    // 被動：普攻命中時，治療範圍內血量比例最低的隊友（含自己）造成傷害的 healRatio%
+    passive: passive('priest', 'grace', { healRatio: 30, range: 300 }),
+    skills: [
+      active('priest', 'heal', [8], [15], { range: [400], heal: [20, 25, 30, 35, 40] }),
+      active('priest', 'repel', [10], [12], { radius: [150], knockback: [140], ratio: [80, 95, 110, 125, 140] }),
+      active('priest', 'blessing', [15], [18], { range: [400], dr: [15, 18, 21, 24, 27], duration: [6] }),
+    ],
+    ultimate: active('priest', 'sanctuary', [75, 65, 55], [40], { radius: [180], duration: [6], heal: [4, 6, 8] }, 3),
   },
   mage: {
     id: 'mage',
@@ -243,9 +261,14 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 0,
     statMultipliers: { maxHp: 0.8, maxMp: 1.5, atk: 1.3, def: 0.7, moveSpeed: 1.0 },
     color: 0x4a6ab0,
-    passive: passive('mage', 'arcaneflow'),
-    skills: [skill('mage', 'firebolt', 5, 12), skill('mage', 'frostnova', 10, 15), skill('mage', 'ignite', 12, 15)],
-    ultimate: ult('mage', 'meteor', 70, 50),
+    // 被動：魔力回復 +mpRegenBonus%
+    passive: passive('mage', 'arcaneflow', { mpRegenBonus: 100 }),
+    skills: [
+      active('mage', 'firebolt', [5], [12], { range: [400], ratio: [180, 210, 240, 270, 300] }),
+      active('mage', 'frostnova', [10], [15], { radius: [160], ratio: [100, 115, 130, 145, 160], slow: [40], duration: [2] }),
+      active('mage', 'ignite', [12], [15], { range: [400], dot: [40, 50, 60, 70, 80], duration: [5] }),
+    ],
+    ultimate: active('mage', 'meteor', [70, 60, 50], [40], { range: [600], radius: [150], delay: [1], ratio: [500, 650, 800] }, 3),
   },
   warlock: {
     id: 'warlock',
@@ -257,8 +280,13 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 0,
     statMultipliers: { maxHp: 0.9, maxMp: 1.4, atk: 1.15, def: 0.8, moveSpeed: 1.0 },
     color: 0x5a8a70,
-    passive: passive('warlock', 'corruption'),
-    skills: [skill('warlock', 'hex', 6, 10), skill('warlock', 'weaken', 10, 12), skill('warlock', 'plague', 12, 15)],
-    ultimate: ult('warlock', 'doom', 70, 50),
+    // 被動：普攻降低目標防禦 armorPerStack，最多疊 maxStacks 層，持續 duration 秒
+    passive: passive('warlock', 'corruption', { armorPerStack: 1, maxStacks: 5, duration: 5 }),
+    skills: [
+      active('warlock', 'hex', [6], [10], { range: [400], ratio: [80], slow: [30, 35, 40, 45, 50], duration: [3] }),
+      active('warlock', 'weaken', [10], [12], { range: [400], armor: [50], vuln: [10, 15, 20, 25, 30], duration: [6] }),
+      active('warlock', 'plague', [12], [15], { range: [400], dot: [30, 40, 50, 60, 70], duration: [6], spread: [200] }),
+    ],
+    ultimate: active('warlock', 'doom', [70, 60, 50], [40], { range: [400], delay: [4], ratio: [600, 800, 1000] }, 3),
   },
 };

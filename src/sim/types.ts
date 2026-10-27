@@ -17,6 +17,47 @@ export interface BuffMods {
   hpLock?: number;
   /** buff 結束時回復全部血量 */
   restoreHpOnEnd?: boolean;
+  /** 普攻附加中毒：每秒造成攻擊力 % 的傷害（刺客淬毒） */
+  poisonDot?: number;
+  /** 中毒持續秒數 */
+  poisonTime?: number;
+}
+
+/**
+ * 怪物身上的異常狀態。
+ * dot：每秒 value 傷害（防禦前）；slow：移動速度 −value%；armor：防禦 −value；armorPct：防禦 −value%；
+ * vuln：受到傷害 +value%；mark：時間到造成 value 傷害（防禦前）。
+ */
+export interface EnemyStatus {
+  id: string;
+  kind: 'dot' | 'slow' | 'armor' | 'armorPct' | 'vuln' | 'mark';
+  ownerId: string;
+  remaining: number;
+  value: number;
+  timer: number;
+  /** 疊層型狀態目前的層數 */
+  stacks?: number;
+  /** 死亡時擴散給這個距離內最近的怪物（瘟疫） */
+  spread?: number;
+  /** 擴散後重新計算的持續時間 */
+  duration?: number;
+}
+
+/** 地面範圍效果：延遲 delay 秒後開始，每 interval 秒結算一次，共 ticks 次 */
+export interface Zone {
+  id: number;
+  ownerId: string;
+  kind: 'damage' | 'heal';
+  x: number;
+  y: number;
+  r: number;
+  delay: number;
+  interval: number;
+  ticks: number;
+  timer: number;
+  /** damage：攻擊力 %；heal：最大血量 % */
+  amount: number;
+  color: number;
 }
 
 export interface Buff {
@@ -101,6 +142,7 @@ export interface EnemyEntity {
   root: number;
   /** 仇恨表：玩家 id → 仇恨值 */
   threat: Record<string, number>;
+  statuses: EnemyStatus[];
   /** 目前攻擊的玩家（畫面標記用） */
   targetId: string | null;
 }
@@ -118,8 +160,14 @@ export interface ProjectileEntity {
   lifesteal: number;
   /** 命中時暈眩秒數 */
   stun?: number;
-  /** 外觀：一般普攻或丟出的盾牌 */
-  kind?: 'shield';
+  /** 命中時定身秒數 */
+  root?: number;
+  /** 命中時附加的狀態 */
+  statuses?: Omit<EnemyStatus, 'timer'>[];
+  /** 普攻（命中時觸發被動） */
+  basic?: boolean;
+  /** 外觀 */
+  kind?: 'shield' | 'arrow' | 'dagger' | 'fire' | 'hex';
   color: number;
 }
 
@@ -149,6 +197,7 @@ export interface World {
   enemies: EnemyEntity[];
   projectiles: ProjectileEntity[];
   telegraphs: TelegraphEntity[];
+  zones: Zone[];
   nextId: number;
   /** 進入此格時的難度倍率 */
   difficulty: { hp: number; atk: number; gold: number };

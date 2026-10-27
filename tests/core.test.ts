@@ -5,7 +5,7 @@ import { canTransition } from '../src/core/roomTransition';
 import { selectTarget, type TargetCandidate } from '../src/core/targeting';
 import { cdReady, cdTick, cdTrigger, cooldown } from '../src/core/cooldown';
 import { createPlayerRun, createRun, migrateRun, type NewPlayer } from '../src/core/runState';
-import type { ClassId } from '../src/core/types';
+import { CLASS_IDS, type ClassId } from '../src/core/types';
 
 const np = (classId: ClassId, id = 'p1'): NewPlayer => ({ id, name: id, classId, color: 0xffffff, autoAttack: true });
 import { computeStats } from '../src/core/stats';
@@ -20,6 +20,7 @@ import { damagePlayer } from '../src/sim/enemies';
 import { addXp, canLearn, learnSkill, skillPoints } from '../src/core/leveling';
 import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
 import type { PlayerEntity, Sim } from '../src/sim/types';
+import { enemyDamageTakenMult, enemySpeedMult } from '../src/sim/status';
 import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
 import { CLASSES, rankValue } from '../src/config/classes';
 import { MAP_CONFIG } from '../src/config/map';
@@ -737,5 +738,111 @@ describe('dps stats', () => {
     stepSim(sim, 0.5);
     expect(sim.world.combatTime).toBeLessThanOrEqual(1.01);
     expect(run.floorDamage.a).toBe(sim.world.damage.a);
+  });
+});
+
+describe('other classes (first pass)', () => {
+  const setup = (classId: ClassId, players: string[] = ['a']) => {
+    const run = createRun(players.map((id, i) => np(i === 0 ? classId : 'knight', id)), 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(players)), moves: {}, events: [] };
+    run.players.a.skillRanks = [1, 1, 1, 1];
+    run.players.a.level = 6;
+    run.players.a.autoAttack = false;
+    const p = sim.world.players.a;
+    p.mp = 999;
+    for (const e of sim.world.enemies) {
+      e.castLock = 99;
+      e.hp = e.maxHp = 99999;
+    }
+    const e = sim.world.enemies[0];
+    e.x = p.x + 80;
+    e.y = p.y;
+    return { sim, p, e };
+  };
+  const run = (sim: Sim, seconds: number) => {
+    for (let t = 0; t < seconds; t += 0.05) stepSim(sim, 0.05);
+  };
+
+  it('every skill of every class can be cast', () => {
+    for (const classId of CLASS_IDS) {
+      const { sim, p } = setup(classId);
+      for (let i = 0; i < 4; i++) {
+        const skill = i < 3 ? CLASSES[classId].skills[i] : CLASSES[classId].ultimate;
+        if (skill.kind === 'passive') continue;
+        p.skillCds[i].remaining = 0;
+        const mp = p.mp;
+        applyAction(sim, 'a', { k: 'skill', i });
+        expect(p.mp, `${classId} ${skill.id}`).toBeLessThanOrEqual(mp);
+        expect(p.skillCds[i].remaining, `${classId} ${skill.id}`).toBeGreaterThan(0);
+      }
+      run(sim, 0.5);
+    }
+  });
+
+  it('ranger multishot and arrow rain deal damage', () => {
+    const { sim, e } = setup('ranger');
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    run(sim, 0.3);
+    const afterShot = e.hp;
+    expect(afterShot).toBeLessThan(99999);
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    run(sim, 3);
+    expect(e.hp).toBeLessThan(afterShot);
+  });
+
+  it('assassin shadow step teleports behind the target and empowers', () => {
+    const { sim, p, e } = setup('assassin');
+    e.x = p.x + 200;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(p.x).toBeGreaterThan(e.x);
+    expect(p.empower?.mult).toBe(1.5);
+  });
+
+  it('priest heals the most injured ally and sanctuary heals over time', () => {
+    const { sim, p } = setup('priest', ['a', 'b']);
+    const ally = sim.world.players.b;
+    ally.x = p.x + 50;
+    ally.hp = 10;
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    expect(ally.hp).toBeGreaterThan(10);
+    const hp = ally.hp;
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    run(sim, 2);
+    expect(ally.hp).toBeGreaterThan(hp);
+  });
+
+  it('mage frost nova slows and meteor lands after its delay', () => {
+    const { sim, e } = setup('mage');
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(enemySpeedMult(e)).toBeCloseTo(0.6);
+    const hp = e.hp;
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    run(sim, 0.5);
+    expect(e.hp).toBe(hp);
+    run(sim, 1);
+    expect(e.hp).toBeLessThan(hp);
+  });
+
+  it('warlock shreds armor, weaken adds vulnerability, plague spreads on death, doom is delayed', () => {
+    const { sim, p, e } = setup('warlock');
+    const [, other] = sim.world.enemies;
+    other.x = e.x + 60;
+    other.y = e.y;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(enemyDamageTakenMult(e)).toBeCloseTo(1.1);
+    applyAction(sim, 'a', { k: 'skill', i: 2 });
+    run(sim, 0.3);
+    expect(e.statuses.some((s) => s.kind === 'dot')).toBe(true);
+    hitEnemy(sim, 'a', e, 999999, 0, false);
+    expect(other.statuses.some((s) => s.kind === 'dot')).toBe(true);
+    const hp = other.hp;
+    p.lockedId = other.id;
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    run(sim, 3.5);
+    const beforeBoom = other.hp;
+    run(sim, 1);
+    expect(other.hp).toBeLessThan(beforeBoom);
+    expect(other.hp).toBeLessThan(hp);
   });
 });

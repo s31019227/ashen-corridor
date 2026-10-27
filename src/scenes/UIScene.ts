@@ -279,6 +279,7 @@ export class UIScene extends Phaser.Scene {
     skills.forEach((skill, i) => {
       const btn = this.skillButtons[i + 1];
       const rank = me.skillRanks[i] ?? 0;
+      // 還沒學：半透明；魔力不足：變暗並顯示藍色「MP」（在下面判斷）
       btn.container.setAlpha(rank > 0 ? 1 : 0.4);
       btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
       btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
@@ -286,7 +287,13 @@ export class UIScene extends Phaser.Scene {
       // 魔力不足：技能按鈕變暗（開關技能關閉時不耗魔，不算）
       const turningOff = skill.kind === 'toggle' && p.toggles[skill.id];
       const cost = rank > 0 && skill.kind !== 'passive' && !turningOff ? rankValue(skill.mpCost, rank) : 0;
-      if (cost > 0 && p.mp < cost) btn.overlay.fillStyle(0x000000, 0.65).fillCircle(0, 0, btn.radius);
+      if (cost > 0 && p.mp < cost) {
+        btn.container.setAlpha(0.35);
+        btn.overlay.fillStyle(0x0a1030, 0.75).fillCircle(0, 0, btn.radius);
+        if (!btn.cdText.text) btn.cdText.setText('MP').setColor('#7aa0ff');
+      } else {
+        btn.cdText.setColor('#ffffff');
+      }
       this.drawDurationRing(btn, skill.id);
       const on = skill.kind === 'toggle' && p.toggles[skill.id];
       btn.shape.setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);

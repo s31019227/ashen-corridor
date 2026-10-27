@@ -85,6 +85,7 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
     enemies: [],
     projectiles: [],
     telegraphs: [],
+    zones: [],
     nextId: 1,
     difficulty: difficultyScale(difficultyLevel(run.map)),
     damage: {},
@@ -181,6 +182,7 @@ function makeEnemy(world: World, defId: string, x: number, y: number, scale: { h
     root: 0,
     threat: {},
     targetId: null,
+    statuses: [],
   };
 }
 

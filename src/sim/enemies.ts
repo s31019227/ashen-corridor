@@ -8,6 +8,7 @@ import { enemyRadius, hitEnemy } from './combat';
 import { absorbWithShields, damageTakenMult, hpLock, passiveSkillRank } from './effects';
 import type { EnemyEntity, PlayerEntity, Sim, TelegraphEntity } from './types';
 import { clearThreat, topThreatPlayer } from './threat';
+import { enemyDef, enemySpeedMult } from './status';
 import { ROOM_BOUNDS } from './world';
 
 // 怪物 AI 與技能預警。怪物會追擊最近的活著玩家。
@@ -73,7 +74,7 @@ export function damagePlayer(sim: Sim, p: PlayerEntity, amount: number, ignoreIn
 function reflectDamage(sim: Sim, p: PlayerEntity, source: EnemyEntity, raw: number) {
   const { rank, values } = passiveSkillRank(sim, p, 'thorns');
   if (rank <= 0) return;
-  hitEnemy(sim, p.id, source, calcDamage((raw * values.reflect) / 100, ENEMIES[source.defId].def), 0, false);
+  hitEnemy(sim, p.id, source, calcDamage((raw * values.reflect) / 100, enemyDef(source)), 0, false);
 }
 
 export function updateEnemies(sim: Sim, dt: number) {
@@ -129,7 +130,7 @@ function updateEnemy(sim: Sim, e: EnemyEntity, dt: number) {
   const gap = edgeDist(e, r, p, PLAYER_RADIUS);
   const dx = (p.x - e.x) / (d || 1);
   const dy = (p.y - e.y) / (d || 1);
-  const speed = def.moveSpeed * dt;
+  const speed = def.moveSpeed * enemySpeedMult(e) * dt;
   if (def.behavior === 'caster' && e.root <= 0) {
     const preferred = def.preferredDistance ?? 200;
     if (d < preferred - 40) {

@@ -7,7 +7,9 @@ import { canTransition } from '../core/roomTransition';
 import { triggerInteract } from './actions';
 import { hpLock, moveSpeed, tickPlayerTimers } from './effects';
 import { updateToggles } from '../systems/SkillSystem';
-import { updatePlayerAttacks } from './combat';
+import { updateEnemyStatuses, updatePlayerAttacks } from './combat';
+import { updateZones } from './zones';
+import { CLASSES } from '../config/classes';
 import { updateEnemies } from './enemies';
 import type { PlayerEntity, Sim } from './types';
 import { INTERACT_POS, ROOM_BOUNDS, createWorld, isCombatRoom, syncRunFromWorld } from './world';
@@ -29,6 +31,8 @@ export function stepSim(sim: Sim, dt: number) {
     sim.run.floorCombatTime += dt;
   }
   updatePlayerAttacks(sim, dt);
+  updateZones(sim, dt);
+  updateEnemyStatuses(sim, dt);
   updateEnemies(sim, dt);
   updateInteractables(sim);
   checkCleared(sim);
@@ -50,7 +54,10 @@ function movePlayers(sim: Sim, dt: number) {
     tickPlayerTimers(sim, p, dt);
     if (!p.connected || p.dead) continue;
     updateToggles(sim, p, dt);
-    p.mp = Math.min(p.stats.maxMp, p.mp + (p.stats.maxMp * p.stats.mpRegen * dt) / 100);
+    // 法師被動：魔力回復加成
+    const classId = sim.run.players[p.id]?.classId;
+    const regenBonus = classId === 'mage' ? CLASSES.mage.passive.values.mpRegenBonus : 0;
+    p.mp = Math.min(p.stats.maxMp, p.mp + (p.stats.maxMp * p.stats.mpRegen * (1 + regenBonus / 100) * dt) / 100);
     const mv = sim.moves[p.id];
     if (!mv) continue;
     let { x, y } = mv;

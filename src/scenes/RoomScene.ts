@@ -232,9 +232,10 @@ export class RoomScene extends Phaser.Scene {
         break;
       case 'aoe': {
         const g = this.add.graphics().setDepth(3);
-        g.fillStyle(e.color, 0.25).fillCircle(e.x, e.y, e.r);
-        g.lineStyle(3, e.color, 0.9).strokeCircle(e.x, e.y, e.r);
-        this.tweens.add({ targets: g, alpha: 0, duration: 450, onComplete: () => g.destroy() });
+        // 範圍技能的光：淡淡一圈，1.5 秒淡出
+        g.fillStyle(e.color, 0.1).fillCircle(e.x, e.y, e.r);
+        g.lineStyle(2, e.color, 0.45).strokeCircle(e.x, e.y, e.r);
+        this.tweens.add({ targets: g, alpha: 0, duration: 1500, onComplete: () => g.destroy() });
         break;
       }
       case 'float':
@@ -496,15 +497,14 @@ export class RoomScene extends Phaser.Scene {
     for (const p of world.projectiles) {
       let v = this.projectiles.get(p.id);
       if (!v) {
-        v =
-          p.kind === 'shield'
-            ? this.add.rectangle(p.x, p.y, 18, 22, p.color).setStrokeStyle(2, 0xd4af37).setDepth(8)
-            : this.add.circle(p.x, p.y, 5, p.color).setStrokeStyle(1, 0xffffff).setDepth(8);
+        v = this.makeProjectile(p.kind, p.color, p.x, p.y);
         this.projectiles.set(p.id, v);
       }
       const pos = net.displayPos('proj', p.id) ?? p;
-      v.setPosition(pos.x, pos.y);
+      // 箭、飛刀朝飛行方向；盾牌旋轉
+      if (p.kind === 'arrow' || p.kind === 'dagger') v.setRotation(Math.atan2(pos.y - v.y, pos.x - v.x) || v.rotation);
       if (p.kind === 'shield') v.setRotation(this.time.now / 60);
+      v.setPosition(pos.x, pos.y);
     }
   }
 
@@ -565,6 +565,38 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
+  private makeProjectile(kind: string | undefined, color: number, x: number, y: number): Phaser.GameObjects.Shape {
+    switch (kind) {
+      case 'shield':
+        return this.add.rectangle(x, y, 18, 22, color).setStrokeStyle(2, 0xd4af37).setDepth(8);
+      case 'arrow':
+        return this.add.rectangle(x, y, 22, 3, 0xe8e0c8).setDepth(8);
+      case 'dagger':
+        return this.add.triangle(x, y, 0, 0, 0, 8, 16, 4, 0xd0d0e0).setDepth(8);
+      case 'fire':
+        return this.add.circle(x, y, 8, 0xff7030).setStrokeStyle(3, 0xffc060, 0.8).setDepth(8);
+      case 'hex':
+        return this.add.circle(x, y, 7, 0x9040c0).setStrokeStyle(2, 0xd080ff, 0.8).setDepth(8);
+      default:
+        return this.add.circle(x, y, 5, color).setStrokeStyle(1, 0xffffff).setDepth(8);
+    }
+  }
+
+  /** 地面範圍效果：延遲中的（隕星）畫成閃爍的警示圈，其他畫成淡色區域 */
+  private drawZones(g: Phaser.GameObjects.Graphics) {
+    const since = net.sinceSnap;
+    for (const z of net.world!.zones) {
+      if (z.timer + since < 0) {
+        const pulse = 0.5 + 0.5 * Math.sin(this.time.now / 80);
+        g.fillStyle(z.color, 0.08 + 0.08 * pulse).fillCircle(z.x, z.y, z.r);
+        g.lineStyle(2, z.color, 0.7).strokeCircle(z.x, z.y, z.r);
+      } else {
+        g.fillStyle(z.color, 0.08).fillCircle(z.x, z.y, z.r);
+        g.lineStyle(1, z.color, 0.4).strokeCircle(z.x, z.y, z.r);
+      }
+    }
+  }
+
   /** 怪物狀態：暈眩（黃色星環）、定身（藍色圈）、目標（頭上小三角是牠正在打的玩家顏色，打自己時加紅框） */
   private drawEnemyStatus(g: Phaser.GameObjects.Graphics) {
     const world = net.world!;
@@ -580,6 +612,22 @@ export class RoomScene extends Phaser.Scene {
         }
       }
       if (e.root > 0) g.lineStyle(3, 0x60a0ff, 0.9).strokeCircle(pos.x, pos.y, r + 4);
+      // 異常狀態：緩速（淺藍）、持續傷害（橘點）、降防／易傷（紫）、延遲爆發（紫色倒數圈）
+      const has = (kind: string) => e.statuses.some((s) => s.kind === kind);
+      if (has('slow')) g.lineStyle(2, 0xa0d8ff, 0.8).strokeCircle(pos.x, pos.y, r + 2);
+      if (has('armor') || has('armorPct') || has('vuln')) g.lineStyle(2, 0xb060e0, 0.8).strokeCircle(pos.x, pos.y, r + 9);
+      if (has('dot')) {
+        const blink = 0.5 + 0.5 * Math.sin(this.time.now / 120);
+        g.fillStyle(0xff9040, 0.5 + 0.5 * blink).fillCircle(pos.x - r * 0.6, pos.y - r - 4, 3).fillCircle(pos.x + r * 0.6, pos.y - r - 2, 2.5);
+      }
+      const mark = e.statuses.find((s) => s.kind === 'mark');
+      if (mark) {
+        g.lineStyle(3, 0xc050ff, 1);
+        g.beginPath();
+        const ratio = Math.max(0, (mark.remaining - net.sinceSnap) / (mark.duration ?? 4));
+        g.arc(pos.x, pos.y, r + 14, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, ratio));
+        g.strokePath();
+      }
       const target = e.targetId ? net.run!.players[e.targetId] : undefined;
       if (target) {
         const ty = pos.y - r - 20;
@@ -598,6 +646,7 @@ export class RoomScene extends Phaser.Scene {
     for (const tg of world.telegraphs) {
       this.paintTelegraph(g, tg, 0.12, 0.3, Math.min(1, (tg.elapsed + since) / tg.warnTime), THEME.telegraph);
     }
+    this.drawZones(g);
     this.drawTombstones(g);
     this.drawSkillEffects(g);
     this.drawEnemyStatus(g);
