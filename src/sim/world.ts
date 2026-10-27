@@ -87,6 +87,8 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
     telegraphs: [],
     nextId: 1,
     difficulty: difficultyScale(difficultyLevel(run.map)),
+    damage: {},
+    combatTime: 0,
     ending: null,
   };
 

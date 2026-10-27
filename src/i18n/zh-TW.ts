@@ -49,6 +49,8 @@ export const zhTW = {
   'hud.room': '房間 {code}',
   'hud.offline': '離線',
   'hud.down': '倒地',
+  'dps.titleRoom': 'DPS／總傷・本房（點擊切換）',
+  'dps.titleFloor': 'DPS／總傷・本層（點擊切換）',
   'hud.downRevive': '倒地（復活 {pct}%）',
   'msg.youDied': '你倒下了',
   'msg.waitRevive': '你倒下了！隊友站在墓碑圈內 10 秒可以救你（{pct}%），清空此區域也會復活',

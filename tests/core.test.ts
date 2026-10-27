@@ -717,3 +717,25 @@ describe('tombstone revive', () => {
     expect(a.reviveProgress).toBeCloseTo(3, 1);
   });
 });
+
+describe('dps stats', () => {
+  it('tracks room and floor damage without overkill, and combat time until cleared', () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a'])), moves: {}, events: [] };
+    run.players.a.autoAttack = false;
+    const [e1, ...rest] = sim.world.enemies;
+    e1.hp = 50;
+    hitEnemy(sim, 'a', e1, 80, 0, false);
+    expect(sim.world.damage.a).toBe(50);
+    expect(run.floorDamage.a).toBe(50);
+    rest.forEach((e) => (e.castLock = 99));
+    stepSim(sim, 0.5);
+    expect(sim.world.combatTime).toBeCloseTo(0.5);
+    for (const e of rest) hitEnemy(sim, 'a', e, 99999, 0, false);
+    stepSim(sim, 0.5); // 清空後不再累計
+    stepSim(sim, 0.5);
+    expect(sim.world.combatTime).toBeLessThanOrEqual(1.01);
+    expect(run.floorDamage.a).toBe(sim.world.damage.a);
+  });
+});

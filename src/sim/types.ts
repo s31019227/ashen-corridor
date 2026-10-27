@@ -32,6 +32,7 @@ export interface Shield {
   id: string;
   amount: number;
   remaining: number;
+  duration: number;
   healPct: number;
 }
 
@@ -151,6 +152,10 @@ export interface World {
   nextId: number;
   /** 進入此格時的難度倍率 */
   difficulty: { hp: number; atk: number; gold: number };
+  /** 本格各玩家造成的傷害（DPS 表用） */
+  damage: Record<string, number>;
+  /** 本格戰鬥時間（第一次造成傷害到清空為止，秒） */
+  combatTime: number;
   /** 本格結束（Boss 擊倒或全滅）後倒數，到 0 時進入結算 */
   ending: { victory: boolean; delay: number } | null;
 }

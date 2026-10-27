@@ -20,6 +20,7 @@ import { addText } from '../ui/text';
 import { isStandalone, toggleFullscreen } from '../ui/fullscreen';
 import { isTouchPrimary } from '../ui/device';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
+import { DpsMeter } from '../ui/DpsMeter';
 import { drawMap } from './MapScene';
 import { SCENES } from './keys';
 import { TOAST_EVENT, type RoomScene } from './RoomScene';
@@ -28,6 +29,8 @@ import { TOAST_EVENT, type RoomScene } from './RoomScene';
 interface ActionButton {
   action: GameAction;
   container: Phaser.GameObjects.Container;
+  /** 按鈕底圖（圓形技能鈕或方形藥水鈕） */
+  shape: Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle;
   overlay: Phaser.GameObjects.Graphics;
   cdText: Phaser.GameObjects.Text;
   label: Phaser.GameObjects.Text;
@@ -37,6 +40,8 @@ interface ActionButton {
   /** 技能按鈕：等級顯示與學習（+）按鈕 */
   rankText?: Phaser.GameObjects.Text;
   learnBtn?: Phaser.GameObjects.Container;
+  /** 技能給自己的 buff / 護盾還剩多久：按鈕外圈倒數 */
+  durRing?: Phaser.GameObjects.Graphics;
 }
 
 /** HUD：血魔條、金幣、小地圖、技能 / 藥水按鈕、虛擬搖桿、提示訊息 */
@@ -57,6 +62,8 @@ export class UIScene extends Phaser.Scene {
   private joystick?: VirtualJoystick;
   private createdAt = 0;
   private teamText!: Phaser.GameObjects.Text;
+  private dps!: DpsMeter;
+  private teamRows = new Map<string, { name: Phaser.GameObjects.Text; bar: Bar; state: Phaser.GameObjects.Text }>();
   private xpBar!: Bar;
   private levelText!: Phaser.GameObjects.Text;
   private buffText!: Phaser.GameObjects.Text;
@@ -75,6 +82,7 @@ export class UIScene extends Phaser.Scene {
     const me = net.me!;
     this.skillButtons = [];
     this.potionButtons = [];
+    this.teamRows = new Map();
     this.minimapRoomId = -1;
     this.createdAt = this.time.now;
 
@@ -114,6 +122,8 @@ export class UIScene extends Phaser.Scene {
       }, { width: 48, height: 40, fontSize: 20 });
     }
     this.dangerText = addText(this, width - 200, 130, '', 14, THEME.textRed);
+    // DPS 表（點一下切換本房／本層）
+    this.dps = new DpsMeter(this, width - 250, 160, 230);
     // 多人：隊友狀態、連線狀態
     this.teamText = addText(this, 20, 154, '', 14, THEME.textDim, { lineSpacing: 4 });
     this.deadText = addText(this, width / 2, height / 2 - 120, t('msg.waitRevive'), 22, THEME.textRed, {
@@ -175,7 +185,7 @@ export class UIScene extends Phaser.Scene {
       container.setScale(0.92);
       this.time.delayedCall(90, () => container.setScale(1));
     });
-    return { action, container, overlay, cdText, label, radius, square };
+    return { action, container, shape, overlay, cdText, label, radius, square };
   }
 
   private createSkillButtons() {
@@ -197,6 +207,8 @@ export class UIScene extends Phaser.Scene {
       btn.rankText = addText(this, 0, -r - 9, '', 11, THEME.textGold, { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
       btn.container.add(btn.rankText);
       btn.learnBtn = this.makeLearnButton(x + r * 0.75, y - r * 0.75, `learn${i + 1}` as GameAction);
+      btn.durRing = this.add.graphics();
+      btn.container.add(btn.durRing);
       this.skillButtons.push(btn);
     });
   }
@@ -271,8 +283,9 @@ export class UIScene extends Phaser.Scene {
       btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
       btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
       if (skill.kind === 'passive') btn.cdText.setText(rank > 0 ? t('skillInfo.passiveShort') : '');
+      this.drawDurationRing(btn, skill.id);
       const on = skill.kind === 'toggle' && p.toggles[skill.id];
-      (btn.container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);
+      btn.shape.setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);
     });
     const parts = p.buffs.map((b) => {
       const skill = skills.find((s) => s.id === b.id);
@@ -285,6 +298,23 @@ export class UIScene extends Phaser.Scene {
     this.buffText.setText(parts.join('　'));
   }
 
+  /** 技能給自己的 buff 或護盾還在時，在按鈕外圈畫一圈倒數（從頂端順時針減少） */
+  private drawDurationRing(btn: ActionButton, skillId: string) {
+    const g = btn.durRing!;
+    g.clear();
+    const p = net.meEntity!;
+    const timer = p.buffs.find((b) => b.id === skillId) ?? p.shields.find((sh) => sh.id === skillId);
+    if (!timer || timer.duration <= 0) return;
+    const ratio = Math.max(0, Math.min(1, (timer.remaining - net.sinceSnap) / timer.duration));
+    if (ratio <= 0) return;
+    const start = -Math.PI / 2;
+    g.lineStyle(5, 0x000000, 0.5).strokeCircle(0, 0, btn.radius + 5);
+    g.lineStyle(4, 0xffd060, 1);
+    g.beginPath();
+    g.arc(0, 0, btn.radius + 5, start, start + Math.PI * 2 * ratio, false);
+    g.strokePath();
+  }
+
   /** 多人：列出隊友血量與連線狀態，以及自己的連線狀態 */
   private refreshTeam() {
     if (!net.isMultiplayer) return;
@@ -293,19 +323,39 @@ export class UIScene extends Phaser.Scene {
     const lines: string[] = [];
     if (net.status !== 'ok') lines.push(t(net.status === 'lost' ? 'net.lost' : 'net.connecting'));
     lines.push(t('hud.room', { code: net.roomCode }));
-    for (const pr of Object.values(run.players)) {
-      if (pr.id === net.myId) continue;
-      const e = world.players[pr.id];
-      const shield = e && shieldTotal(e) > 0 ? ` +${Math.ceil(shieldTotal(e))}` : '';
-      const revive = e?.dead ? Math.floor((e.reviveProgress / MULTIPLAYER_CONFIG.reviveTime) * 100) : 0;
-      const state = !e?.connected
-        ? t('hud.offline')
-        : e.dead
-          ? t('hud.downRevive', { pct: revive })
-          : `${Math.ceil(e.hp)}/${e.stats.maxHp}${shield}`;
-      lines.push(`${pr.name}（${t(CLASSES[pr.classId].nameKey)}）${state}`);
-    }
     this.teamText.setText(lines.join('\n'));
+
+    // 隊友：名字（職業）＋血條（含護盾）＋狀態
+    let y = this.teamText.y + this.teamText.height + 8;
+    const ids = Object.keys(run.players).filter((id) => id !== net.myId);
+    for (const id of ids) {
+      const pr = run.players[id];
+      const e = world.players[id];
+      let row = this.teamRows.get(id);
+      if (!row) {
+        const name = addText(this, 20, 0, '', 13, THEME.text);
+        const bar = new Bar(this, 20, 0, 180, 10, THEME.hp);
+        const state = addText(this, 206, 0, '', 12, THEME.textDim).setOrigin(0, 0.5);
+        row = { name, bar, state };
+        this.teamRows.set(id, row);
+      }
+      row.name.setY(y).setText(`${pr.name}（${t(CLASSES[pr.classId].nameKey)}）`).setColor(`#${pr.color.toString(16).padStart(6, '0')}`);
+      const barY = y + row.name.height + 7;
+      row.bar.setY(barY);
+      row.state.setY(barY);
+      if (!e?.connected) {
+        row.bar.setValue(0, 1, false);
+        row.state.setText(t('hud.offline')).setColor(THEME.textDim);
+      } else if (e.dead) {
+        const pct = Math.floor((e.reviveProgress / MULTIPLAYER_CONFIG.reviveTime) * 100);
+        row.bar.setValue(0, e.stats.maxHp, false);
+        row.state.setText(t('hud.downRevive', { pct })).setColor(THEME.textRed);
+      } else {
+        row.bar.setValue(e.hp, e.stats.maxHp, false, shieldTotal(e));
+        row.state.setText(`${Math.ceil(e.hp)}`).setColor(THEME.textDim);
+      }
+      y = barY + 14;
+    }
   }
 
   private refreshMinimap() {
@@ -340,9 +390,10 @@ export class UIScene extends Phaser.Scene {
     const auto = me.autoAttack;
     const attackBtn = this.skillButtons[0];
     attackBtn.label.setText(`${t('hud.autoAttack')}\n${t(auto ? 'settings.on' : 'settings.off')}`);
-    (attackBtn.container.list[0] as Phaser.GameObjects.Arc).setFillStyle(auto ? 0x8b2e2e : 0x2a2830, 0.9);
+    attackBtn.shape.setFillStyle(auto ? 0x8b2e2e : 0x2a2830, 0.9);
     this.unlockBtn.setVisible(p.lockedId !== null);
     this.refreshMinimap();
+    this.dps.update(this.time.now);
     this.deadText.setVisible(p.dead);
     if (p.dead) {
       const pct = Math.floor((p.reviveProgress / MULTIPLAYER_CONFIG.reviveTime) * 100);
@@ -356,7 +407,7 @@ export class UIScene extends Phaser.Scene {
       const potionId = me.potions[i];
       const def = potionId ? POTIONS[potionId] : null;
       btn.label.setText(def ? t(def.shortKey) : '');
-      (btn.container.list[0] as Phaser.GameObjects.Rectangle).setFillStyle(def ? def.color : THEME.button, def ? 0.8 : 0.4);
+      btn.shape.setFillStyle(def ? def.color : THEME.button, def ? 0.8 : 0.4);
       this.drawCooldown(btn, potionId ? p.potionCds[i] : undefined);
     });
   }

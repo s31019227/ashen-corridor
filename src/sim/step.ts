@@ -23,6 +23,11 @@ export function stepSim(sim: Sim, dt: number) {
   }
   movePlayers(sim, dt);
   updateRevives(sim, dt);
+  // 戰鬥時間：本格有人造成過傷害、而且還有怪物時才累計
+  if (Object.keys(sim.world.damage).length > 0 && isCombatRoom(sim.run, sim.world.roomId)) {
+    sim.world.combatTime += dt;
+    sim.run.floorCombatTime += dt;
+  }
   updatePlayerAttacks(sim, dt);
   updateEnemies(sim, dt);
   updateInteractables(sim);

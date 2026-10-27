@@ -48,6 +48,9 @@ export interface RunState {
   players: Record<string, PlayerRun>;
   /** 房主的玩家 id（接續存檔時用來認回自己） */
   hostId: string;
+  /** 本層各玩家造成的傷害與戰鬥時間（DPS 表用） */
+  floorDamage: Record<string, number>;
+  floorCombatTime: number;
 }
 
 export interface NewPlayer {
@@ -95,6 +98,8 @@ export function createRun(players: NewPlayer[], seed: number, hostId: string): R
     kills: 0,
     players: Object.fromEntries(players.map((p) => [p.id, createPlayerRun(p)])),
     hostId,
+    floorDamage: {},
+    floorCombatTime: 0,
   };
 }
 
@@ -107,7 +112,11 @@ export function migrateRun(data: RunState): RunState | null {
     for (const p of Object.values(data.players)) Object.assign(p, { level: 1, xp: 0, skillRanks: [0, 0, 0, 0] });
     data.version = RUN_STATE_VERSION;
   }
-  return data.version === RUN_STATE_VERSION ? data : null;
+  if (data.version !== RUN_STATE_VERSION) return null;
+  // 舊存檔沒有 DPS 統計，補上預設值
+  data.floorDamage ??= {};
+  data.floorCombatTime ??= 0;
+  return data;
 }
 
 export function addGold(p: PlayerRun, amount: number) {

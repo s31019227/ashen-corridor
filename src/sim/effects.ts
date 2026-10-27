@@ -49,7 +49,7 @@ export function heal(sim: Sim, p: PlayerEntity, amount: number, sourceId = p.id)
 
 export function addShield(p: PlayerEntity, id: string, amount: number, duration: number, healPct = 0) {
   p.shields = p.shields.filter((sh) => sh.id !== id);
-  p.shields.push({ id, amount, remaining: duration, healPct });
+  p.shields.push({ id, amount, remaining: duration, duration, healPct });
 }
 
 export function shieldTotal(p: PlayerEntity): number {

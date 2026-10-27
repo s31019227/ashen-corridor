@@ -144,6 +144,10 @@ function updateProjectiles(sim: Sim, dt: number) {
 
 export function hitEnemy(sim: Sim, ownerId: string, e: EnemyEntity, damage: number, knockback: number, crit: boolean) {
   if (!e.alive) return;
+  // DPS 表只算實際打掉的血量（不含溢出傷害）
+  const dealt = Math.min(e.hp, damage);
+  sim.world.damage[ownerId] = (sim.world.damage[ownerId] ?? 0) + dealt;
+  sim.run.floorDamage[ownerId] = (sim.run.floorDamage[ownerId] ?? 0) + dealt;
   e.hp = Math.max(0, e.hp - damage);
   addDamageThreat(sim, e, ownerId, damage);
   sim.events.push({ k: 'dmg', x: e.x, y: e.y - enemyRadius(e) - 12, v: damage, crit });
