@@ -149,8 +149,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 20,
     statMultipliers: { maxHp: 1.5, atk: 0.85, def: 2.0, moveSpeed: 0.9 },
     color: 0x8a8f9e,
-    // 被動：常駐減傷；每次施放技能嘲諷場上所有敵人 tauntDuration 秒
-    passive: passive('knight', 'provoke', { damageReduction: 15, tauntDuration: 3 }),
+    // 被動：常駐減傷；每次施放技能嘲諷場上所有敵人（沒有時間限制，直到騎士倒下或離開格子）
+    passive: passive('knight', 'provoke', { damageReduction: 15 }),
     skills: [
       {
         ...keys('knight', 'shieldbash'),

@@ -172,7 +172,6 @@ function makeEnemy(world: World, defId: string, x: number, y: number, scale: { h
     stun: 0,
     root: 0,
     tauntId: null,
-    tauntTime: 0,
   };
 }
 

@@ -20,6 +20,8 @@ export interface EnemySkillDef {
   cooldown: number;
   /** 施放距離上限（像素） */
   castRange: number;
+  /** 可以被反甲反彈（預設只有普通攻擊會被反彈） */
+  reflectable?: boolean;
 }
 
 export interface EnemyDef {

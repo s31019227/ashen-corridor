@@ -96,9 +96,8 @@ export interface EnemyEntity {
   stun: number;
   /** 定身剩餘秒數：不能移動，但可以攻擊、施法 */
   root: number;
-  /** 被嘲諷：強制攻擊這位玩家 */
+  /** 被嘲諷：強制攻擊這位玩家（沒有時間限制，對方倒下或離線時解除） */
   tauntId: string | null;
-  tauntTime: number;
 }
 
 export interface ProjectileEntity {
@@ -135,6 +134,8 @@ export interface TelegraphEntity {
   damage: number;
   /** 施放的怪物（反甲等反擊用） */
   ownerId?: number;
+  /** 可以被反甲反彈 */
+  reflectable?: boolean;
 }
 
 export interface World {

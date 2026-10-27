@@ -309,13 +309,13 @@ export const zhTW = {
   'skill.warrior.rage.desc': '{duration} 秒內血量鎖定在 {hpLock}%（不會減少也不會回復），結束時回復全部血量。期間攻擊範圍提高 {range}%，移動速度、攻擊速度、減傷提高 {bonus}%。',
 
   'skill.knight.provoke.name': '嘲諷',
-  'skill.knight.provoke.desc': '自身常駐減傷 {damageReduction}%。每次施放技能都會嘲諷場上所有敵人 {tauntDuration} 秒，強制牠們攻擊自己。',
+  'skill.knight.provoke.desc': '自身常駐減傷 {damageReduction}%。每次施放技能都會嘲諷場上所有敵人，讓牠們改為攻擊自己（直到騎士倒下或離開這一格）。',
   'skill.knight.shieldbash.name': '盾擊',
   'skill.knight.shieldbash.desc': '朝目標丟出盾牌（範圍 {range}），造成攻擊力 {ratio}% 的傷害並暈眩 {stun} 秒。',
   'skill.knight.holyshield.name': '聖盾',
   'skill.knight.holyshield.desc': '獲得最大血量 {shield}% 的護盾，持續 {duration} 秒。時間結束時若還有剩餘護盾，回復剩餘量 {heal}% 的生命。',
   'skill.knight.thorns.name': '反甲',
-  'skill.knight.thorns.desc': '學習後每次受到攻擊，把計算防禦前傷害的 {reflect}% 反彈給攻擊者。',
+  'skill.knight.thorns.desc': '學習後每次受到怪物的普通攻擊（以及少數標明的技能），把自身防禦計算前的傷害 {reflect}% 反彈給攻擊者（會再扣攻擊者的防禦）。',
   'skill.knight.domain.name': '領域',
   'skill.knight.domain.desc': '{range} 範圍內的隊友獲得等同自身最大血量 {shield}% 的護盾，持續 {shieldDuration} 秒；範圍內的敵人定身 {root} 秒並受到攻擊力 {ratio}% 的傷害；自身減傷 {selfDr}%，持續 {selfDrDuration} 秒。',
 

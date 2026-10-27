@@ -147,16 +147,14 @@ export function runSkill(ctx: SkillContext): boolean {
   return ok;
 }
 
-/** 施放技能時的被動：騎士嘲諷場上所有敵人 */
+/** 施放技能時的被動：騎士嘲諷場上所有敵人（沒有時間限制） */
 function onSkillCast(sim: Sim, p: PlayerEntity) {
   const classId = sim.run.players[p.id].classId;
   if (classId !== 'knight') return;
-  const duration = CLASSES.knight.passive.values.tauntDuration;
   let any = false;
   for (const e of sim.world.enemies) {
     if (!e.alive) continue;
     e.tauntId = p.id;
-    e.tauntTime = duration;
     any = true;
   }
   if (any) sim.events.push({ k: 'float', x: p.x, y: p.y - 56, key: 'msg.taunt', color: '#e05040' });

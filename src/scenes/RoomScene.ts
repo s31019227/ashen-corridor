@@ -552,7 +552,7 @@ export class RoomScene extends Phaser.Scene {
         }
       }
       if (e.root > 0) g.lineStyle(3, 0x60a0ff, 0.9).strokeCircle(pos.x, pos.y, r + 4);
-      if (e.tauntTime > 0) {
+      if (e.tauntId) {
         g.fillStyle(0xe05040, 1).fillRect(pos.x + r - 2, pos.y - r - 14, 4, 9);
         g.fillCircle(pos.x + r, pos.y - r - 2, 2);
       }

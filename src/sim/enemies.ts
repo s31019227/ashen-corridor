@@ -19,9 +19,10 @@ function alivePlayers(sim: Sim): PlayerEntity[] {
 
 /** 怪物的目標：被嘲諷時攻擊嘲諷者，否則最近的活著玩家 */
 function targetPlayer(sim: Sim, e: EnemyEntity): PlayerEntity | null {
-  if (e.tauntTime > 0 && e.tauntId) {
+  if (e.tauntId) {
     const t = sim.world.players[e.tauntId];
     if (t?.connected && !t.dead) return t;
+    e.tauntId = null;
   }
   return nearestPlayer(sim, e);
 }
@@ -67,11 +68,11 @@ export function damagePlayer(sim: Sim, p: PlayerEntity, amount: number, ignoreIn
   }
 }
 
-/** 騎士反甲：把計算防禦前的傷害按比例反彈給攻擊者（不計對方防禦） */
+/** 騎士反甲：把「自身防禦計算前」的傷害按比例反彈給攻擊者，再扣攻擊者自己的防禦 */
 function reflectDamage(sim: Sim, p: PlayerEntity, source: EnemyEntity, raw: number) {
   const { rank, values } = passiveSkillRank(sim, p, 'thorns');
   if (rank <= 0) return;
-  hitEnemy(sim, p.id, source, Math.max(1, Math.round((raw * values.reflect) / 100)), 0, false);
+  hitEnemy(sim, p.id, source, calcDamage((raw * values.reflect) / 100, ENEMIES[source.defId].def), 0, false);
 }
 
 export function updateEnemies(sim: Sim, dt: number) {
@@ -99,7 +100,6 @@ function updateEnemy(sim: Sim, e: EnemyEntity, dt: number) {
     e.kt -= step;
     return;
   }
-  if (e.tauntTime > 0) e.tauntTime -= dt;
   if (e.root > 0) e.root -= dt;
   if (e.stun > 0) {
     e.stun -= dt;
@@ -168,6 +168,7 @@ function cast(sim: Sim, e: EnemyEntity, p: PlayerEntity, skill: EnemySkillDef) {
     elapsed: 0,
     damage: Math.round(skill.damage * e.damageMult),
     ownerId: e.id,
+    reflectable: skill.reflectable,
   });
   // 以自身為起點的技能：施放期間站著不動，給玩家躲避的機會
   if (fromSelf) e.castLock = skill.warnTime;
@@ -186,7 +187,8 @@ function updateTelegraphs(sim: Sim, dt: number) {
     sim.events.push({ k: 'boom', tg: { ...tg } });
     for (const p of alivePlayers(sim)) {
       if (!telegraphHits(tg, p, PLAYER_RADIUS)) continue;
-      const owner = sim.world.enemies.find((e) => e.id === tg.ownerId);
+      // 技能預設不會被反甲反彈，設定檔標明 reflectable 的才會
+      const owner = tg.reflectable ? sim.world.enemies.find((e) => e.id === tg.ownerId) : undefined;
       damagePlayer(sim, p, calcDamage(tg.damage, p.stats.def), true, owner, tg.damage);
     }
     return false;

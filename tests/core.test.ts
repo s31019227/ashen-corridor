@@ -539,7 +539,9 @@ describe('knight skills', () => {
     expect(damageTakenMult(p, sim)).toBeCloseTo(0.85);
     applyAction(sim, 'a', { k: 'skill', i: 1 });
     expect(e.tauntId).toBe('a');
-    expect(e.tauntTime).toBeGreaterThan(0);
+    // 沒有時間限制：過一段時間仍然嘲諷中，騎士倒下才解除
+    for (let i = 0; i < 20; i++) stepSim(sim, 0.5);
+    expect(e.tauntId).toBe('a');
   });
 
   it('shield bash hits and stuns; with no enemies it refunds', () => {
@@ -577,7 +579,7 @@ describe('knight skills', () => {
     const { sim, p, e } = setup();
     e.hp = e.maxHp = 9999;
     damagePlayer(sim, p, 5, true, e, 20);
-    expect(9999 - e.hp).toBe(15); // 20 × 75%
+    expect(9999 - e.hp).toBe(calcDamage(15, ENEMIES[e.defId].def)); // 20 × 75%，再扣怪物防禦
     sim.run.players.a.skillRanks[2] = 0;
     const hp = e.hp;
     damagePlayer(sim, p, 5, true, e, 20);
@@ -596,5 +598,37 @@ describe('knight skills', () => {
     expect(e.root).toBeGreaterThan(0);
     expect(e.hp).toBeLessThan(99999);
     expect(damageTakenMult(p, sim)).toBeCloseTo(0.85 * 0.1);
+  });
+});
+
+describe('thorns and taunt details', () => {
+  it('enemy skills are not reflected unless marked reflectable', () => {
+    const run = createRun([np('knight', 'a')], 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a'])), moves: {}, events: [] };
+    run.players.a.skillRanks = [0, 0, 1, 0];
+    const p = sim.world.players.a;
+    const e = sim.world.enemies[0];
+    e.hp = e.maxHp = 9999;
+    e.castLock = 99;
+    sim.world.enemies = [e];
+    sim.world.telegraphs = [
+      { id: 999, shape: 'circle', x: p.x, y: p.y, size: 50, length: 0, angle: 0, warnTime: 0.01, elapsed: 0, damage: 30, ownerId: e.id },
+    ];
+    stepSim(sim, 0.05);
+    expect(e.hp).toBe(9999);
+  });
+
+  it('taunt ends when the knight goes down', () => {
+    const run = createRun([np('knight', 'a'), np('mage', 'b')], 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a', 'b'])), moves: {}, events: [] };
+    run.players.a.skillRanks = [0, 1, 0, 0];
+    sim.world.players.a.mp = 99;
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(sim.world.enemies.every((e) => e.tauntId === 'a')).toBe(true);
+    sim.world.players.a.dead = true;
+    stepSim(sim, 0.05);
+    expect(sim.world.enemies.filter((e) => e.alive).every((e) => e.tauntId === null)).toBe(true);
   });
 });
