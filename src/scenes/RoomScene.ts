@@ -48,7 +48,7 @@ export class RoomScene extends Phaser.Scene {
   private interactable: Phaser.GameObjects.Container | null = null;
   private players = new Map<string, PlayerView>();
   private enemies = new Map<number, EnemyView>();
-  private projectiles = new Map<number, Phaser.GameObjects.Arc>();
+  private projectiles = new Map<number, Phaser.GameObjects.Shape>();
   private lastCleared = false;
   private leaving = false;
 
@@ -228,6 +228,16 @@ export class RoomScene extends Phaser.Scene {
       }
       case 'room':
         this.changeRoom();
+        break;
+      case 'aoe': {
+        const g = this.add.graphics().setDepth(3);
+        g.fillStyle(e.color, 0.25).fillCircle(e.x, e.y, e.r);
+        g.lineStyle(3, e.color, 0.9).strokeCircle(e.x, e.y, e.r);
+        this.tweens.add({ targets: g, alpha: 0, duration: 450, onComplete: () => g.destroy() });
+        break;
+      }
+      case 'float':
+        floatText(this, e.x, e.y, t(e.key), e.color, 18);
         break;
     }
   }
@@ -484,11 +494,15 @@ export class RoomScene extends Phaser.Scene {
     for (const p of world.projectiles) {
       let v = this.projectiles.get(p.id);
       if (!v) {
-        v = this.add.circle(p.x, p.y, 5, p.color).setStrokeStyle(1, 0xffffff).setDepth(8);
+        v =
+          p.kind === 'shield'
+            ? this.add.rectangle(p.x, p.y, 18, 22, p.color).setStrokeStyle(2, 0xd4af37).setDepth(8)
+            : this.add.circle(p.x, p.y, 5, p.color).setStrokeStyle(1, 0xffffff).setDepth(8);
         this.projectiles.set(p.id, v);
       }
       const pos = net.displayPos('proj', p.id) ?? p;
       v.setPosition(pos.x, pos.y);
+      if (p.kind === 'shield') v.setRotation(this.time.now / 60);
     }
   }
 
@@ -513,8 +527,34 @@ export class RoomScene extends Phaser.Scene {
       } else if (p.buffs.some((b) => b.id === 'charge')) {
         g.lineStyle(3, 0x80c0ff, 0.6).strokeCircle(pos.x, pos.y, R + 5);
       }
+      if (p.shields.length > 0) {
+        g.fillStyle(0x80c8ff, 0.12).fillCircle(pos.x, pos.y, R + 10);
+        g.lineStyle(2, 0xa0d8ff, 0.8).strokeCircle(pos.x, pos.y, R + 10);
+      }
       if (p.empower) {
         g.fillStyle(0xffd060, 0.6 + 0.4 * pulse).fillCircle(pos.x + p.fx * (R + 14), pos.y + p.fy * (R + 14), 5);
+      }
+    }
+  }
+
+  /** 怪物狀態：暈眩（黃色星環）、定身（藍色圈）、被嘲諷（紅色 !） */
+  private drawEnemyStatus(g: Phaser.GameObjects.Graphics) {
+    const world = net.world!;
+    for (const e of world.enemies) {
+      const pos = net.displayPos('enemy', e.id) ?? e;
+      const r = ENEMIES[e.defId].radius;
+      if (e.stun > 0) {
+        const a = this.time.now / 200;
+        g.fillStyle(0xffe060, 1);
+        for (let i = 0; i < 3; i++) {
+          const ang = a + (i * Math.PI * 2) / 3;
+          g.fillCircle(pos.x + Math.cos(ang) * (r * 0.8), pos.y - r - 16 + Math.sin(ang) * 4, 3);
+        }
+      }
+      if (e.root > 0) g.lineStyle(3, 0x60a0ff, 0.9).strokeCircle(pos.x, pos.y, r + 4);
+      if (e.tauntTime > 0) {
+        g.fillStyle(0xe05040, 1).fillRect(pos.x + r - 2, pos.y - r - 14, 4, 9);
+        g.fillCircle(pos.x + r, pos.y - r - 2, 2);
       }
     }
   }
@@ -529,6 +569,7 @@ export class RoomScene extends Phaser.Scene {
       this.paintTelegraph(g, tg, 0.12, 0.3, Math.min(1, (tg.elapsed + since) / tg.warnTime), THEME.telegraph);
     }
     this.drawSkillEffects(g);
+    this.drawEnemyStatus(g);
     const me = net.meEntity;
     if (!me || me.dead) return;
     const ring =(id: number | null, width: number, alpha: number, pad: number) => {

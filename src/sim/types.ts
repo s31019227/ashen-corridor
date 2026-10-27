@@ -13,8 +13,10 @@ export interface BuffMods {
   damageReduction?: number;
   /** 普攻射程 */
   attackRange?: number;
-  /** 血量下限（最大血量 %），例如戰士大招鎖血 */
-  hpFloor?: number;
+  /** 血量鎖定在最大血量的 %（不會降低也不會回復），例如戰士大招 */
+  hpLock?: number;
+  /** buff 結束時回復全部血量 */
+  restoreHpOnEnd?: boolean;
 }
 
 export interface Buff {
@@ -23,6 +25,14 @@ export interface Buff {
   remaining: number;
   duration: number;
   mods: BuffMods;
+}
+
+/** 護盾：先吸收傷害；時間到還有剩時，回復剩餘量的 healPct% 血量 */
+export interface Shield {
+  id: string;
+  amount: number;
+  remaining: number;
+  healPct: number;
 }
 
 export interface PlayerEntity {
@@ -58,6 +68,7 @@ export interface PlayerEntity {
   toggleTick: number;
   /** 下一次普攻的強化（例如戰士重擊） */
   empower: { mult: number; lifesteal: number } | null;
+  shields: Shield[];
 }
 
 export interface EnemyEntity {
@@ -81,6 +92,13 @@ export interface EnemyEntity {
   kt: number;
   /** caster 側移方向 */
   strafe: number;
+  /** 暈眩剩餘秒數：不能移動、攻擊、施法 */
+  stun: number;
+  /** 定身剩餘秒數：不能移動，但可以攻擊、施法 */
+  root: number;
+  /** 被嘲諷：強制攻擊這位玩家 */
+  tauntId: string | null;
+  tauntTime: number;
 }
 
 export interface ProjectileEntity {
@@ -94,6 +112,10 @@ export interface ProjectileEntity {
   crit: boolean;
   /** 命中時回復造成傷害的比例（%） */
   lifesteal: number;
+  /** 命中時暈眩秒數 */
+  stun?: number;
+  /** 外觀：一般普攻或丟出的盾牌 */
+  kind?: 'shield';
   color: number;
 }
 
@@ -111,6 +133,8 @@ export interface TelegraphEntity {
   warnTime: number;
   elapsed: number;
   damage: number;
+  /** 施放的怪物（反甲等反擊用） */
+  ownerId?: number;
 }
 
 export interface World {
@@ -140,7 +164,9 @@ export type GameEvent =
   | { k: 'room'; roomId: number; fromDir: Dir | null }
   | { k: 'cleared'; roomId: number }
   | { k: 'revive'; pid: string }
-  | { k: 'levelup'; pid: string; level: number };
+  | { k: 'levelup'; pid: string; level: number }
+  | { k: 'aoe'; x: number; y: number; r: number; color: number }
+  | { k: 'float'; x: number; y: number; key: string; color: string };
 
 /** 玩家送給房主的動作 */
 export type PlayerAction =

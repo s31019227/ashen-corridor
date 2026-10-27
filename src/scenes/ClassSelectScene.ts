@@ -85,7 +85,6 @@ export class ClassSelectScene extends Phaser.Scene {
     line(left, `${t('classSelect.attack')}：${t(`attackStyle.${def.attackStyle}`)}  /  ${def.attackRange}px  /  ${def.attackInterval}s`);
     const statKeys = ['maxHp', 'maxMp', 'atk', 'def', 'moveSpeed'] as const;
     line(left, statKeys.map((k) => `${t(`stat.${k}`)} ${stats[k]}`).join('   '), 15, THEME.textDim, 16);
-    line(left, t('classSelect.levelHint'), 13, THEME.textDim);
 
     // 右欄：被動與技能說明（各等級數值以 / 分隔）
     renderSkillList(this, this.detail, id, 560, 262, 620, isPhone());

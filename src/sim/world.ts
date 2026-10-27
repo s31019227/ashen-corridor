@@ -66,6 +66,7 @@ export function createPlayerEntity(p: PlayerRun, x: number, y: number, connected
     toggles: {},
     toggleTick: 0,
     empower: null,
+    shields: [],
   };
 }
 
@@ -104,6 +105,7 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
       e.buffs = old.buffs;
       e.toggles = old.toggles;
       e.empower = old.empower;
+      e.shields = old.shields;
     }
     world.players[id] = e;
   });
@@ -167,6 +169,10 @@ function makeEnemy(world: World, defId: string, x: number, y: number, scale: { h
     kvy: 0,
     kt: 0,
     strafe: Math.random() < 0.5 ? 1 : -1,
+    stun: 0,
+    root: 0,
+    tauntId: null,
+    tauntTime: 0,
   };
 }
 

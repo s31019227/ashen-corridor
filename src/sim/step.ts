@@ -5,7 +5,7 @@ import { cdTick } from '../core/cooldown';
 import { markCleared, neighbors } from '../core/mapGen';
 import { canTransition } from '../core/roomTransition';
 import { triggerInteract } from './actions';
-import { moveSpeed, tickBuffs } from './effects';
+import { hpLock, moveSpeed, tickPlayerTimers } from './effects';
 import { updateToggles } from '../systems/SkillSystem';
 import { updatePlayerAttacks } from './combat';
 import { updateEnemies } from './enemies';
@@ -28,6 +28,11 @@ export function stepSim(sim: Sim, dt: number) {
   checkCleared(sim);
   checkDefeat(sim);
   if (!sim.world.ending) checkTransition(sim);
+  // 血量鎖定（戰士大招）：鎖定期間血量固定，治療與扣血都不會改變
+  for (const p of Object.values(sim.world.players)) {
+    const lock = hpLock(p);
+    if (lock !== null && !p.dead) p.hp = lock;
+  }
   syncRunFromWorld(sim);
 }
 
@@ -36,7 +41,7 @@ function movePlayers(sim: Sim, dt: number) {
     for (const cd of p.skillCds) cdTick(cd, dt);
     for (const cd of p.potionCds) cdTick(cd, dt);
     if (p.invuln > 0) p.invuln -= dt;
-    tickBuffs(p, dt);
+    tickPlayerTimers(sim, p, dt);
     if (!p.connected || p.dead) continue;
     updateToggles(sim, p, dt);
     p.mp = Math.min(p.stats.maxMp, p.mp + (p.stats.maxMp * p.stats.mpRegen * dt) / 100);

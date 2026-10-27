@@ -47,6 +47,7 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       const rank = pr.skillRanks[a.i] ?? 0;
       if (!skill || !cd) return;
       if (rank <= 0) return toast(sim, pid, 'msg.notLearned', COLOR.dim);
+      if (skill.kind === 'passive') return toast(sim, pid, 'msg.passiveSkill', COLOR.dim);
       if (!cdReady(cd)) return toast(sim, pid, 'msg.onCooldown', COLOR.dim);
       // 開關型技能：關閉時不耗魔、不進冷卻
       const turningOff = skill.kind === 'toggle' && p.toggles[skill.id];
@@ -56,7 +57,11 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       const cooldown = rankValue(skill.cooldown, rank) * (1 - p.stats.cooldownReduction / 100);
       // 開關型技能 0 冷卻時給一點間隔，避免連按
       cdTrigger(cd, skill.kind === 'toggle' ? Math.max(cooldown, 0.3) : cooldown);
-      runSkill({ sim, player: p, skill, index: a.i, rank });
+      if (!runSkill({ sim, player: p, skill, index: a.i, rank })) {
+        // 施放失敗（例如沒有目標）：退還魔力與冷卻
+        p.mp += cost;
+        cd.remaining = 0;
+      }
       return;
     }
     case 'learn': {

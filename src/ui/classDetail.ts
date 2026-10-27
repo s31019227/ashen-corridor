@@ -20,6 +20,7 @@ export function skillParams(skill: SkillDef): Record<string, string> {
 export function skillHeader(skill: SkillDef, label: string): string {
   const name = t(skill.nameKey);
   if (skill.kind === 'toggle') return `${label} ${name}　${t('skillInfo.toggle')}`;
+  if (skill.kind === 'passive') return `${label} ${name}　${t('skillInfo.passive')}`;
   return `${label} ${name}　${t('skillInfo.cdMp', skillParams(skill))}`;
 }
 

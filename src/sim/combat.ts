@@ -130,6 +130,7 @@ function updateProjectiles(sim: Sim, dt: number) {
     const move = speed * dt;
     if (d <= enemyRadius(target) + move) {
       hitEnemy(sim, proj.ownerId, target, proj.damage, proj.knockback, proj.crit);
+      if (proj.stun && target.alive) target.stun = Math.max(target.stun, proj.stun);
       const owner = sim.world.players[proj.ownerId];
       if (owner) healFromLifesteal(sim, owner, proj.damage, proj.lifesteal);
       return false;

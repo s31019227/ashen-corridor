@@ -32,10 +32,12 @@ export function computeStats(
   level = 1,
 ): Stats {
   const mult = CLASSES[classId].statMultipliers;
+  const growth = CLASSES[classId].growth;
   const stats = { ...PLAYER_BASE_STATS };
   for (const k of STAT_KEYS) {
-    const growth = 1 + ((LEVEL_CONFIG.growthPercent[k] ?? 0) * (level - 1)) / 100;
-    stats[k] = PLAYER_BASE_STATS[k] * (mult[k] ?? 1) * growth + (LEVEL_CONFIG.growthFlat[k] ?? 0) * (level - 1);
+    const pct = growth?.percent?.[k] ?? LEVEL_CONFIG.growthPercent[k] ?? 0;
+    const flat = growth?.flat?.[k] ?? LEVEL_CONFIG.growthFlat[k] ?? 0;
+    stats[k] = PLAYER_BASE_STATS[k] * (mult[k] ?? 1) * (1 + (pct * (level - 1)) / 100) + flat * (level - 1);
   }
   if (PLAYER_CONFIG.applyEquipmentStats) {
     for (const itemId of Object.values(equipment)) {

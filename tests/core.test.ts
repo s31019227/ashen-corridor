@@ -15,7 +15,7 @@ import { ENEMIES } from '../src/config/enemies';
 import { stepSim } from '../src/sim/step';
 import { applyAction } from '../src/sim/actions';
 import { hitEnemy, skillTarget } from '../src/sim/combat';
-import { attackPower, damageTakenMult, moveSpeed, passiveAttackMult } from '../src/sim/effects';
+import { attackPower, damageTakenMult, heal, moveSpeed, passiveAttackMult, shieldTotal } from '../src/sim/effects';
 import { damagePlayer } from '../src/sim/enemies';
 import { addXp, canLearn, learnSkill, skillPoints } from '../src/core/leveling';
 import { createWorld, ROOM_BOUNDS } from '../src/sim/world';
@@ -490,5 +490,111 @@ describe('selling and warrior tuning', () => {
     expect(computeStats('warrior', createPlayerRun(np('warrior')).equipment).maxMp).toBe(30);
     expect(CLASSES.warrior.ultimate.mpCost).toEqual([20]);
     expect(CLASSES.warrior.skills[0].values.lifesteal).toEqual([10, 20, 30, 40, 50]);
+  });
+});
+
+describe('warrior rework', () => {
+  it('gains exactly +1 max mana per level', () => {
+    const eq = createPlayerRun(np('warrior')).equipment;
+    expect(computeStats('warrior', eq, [], 5).maxMp - computeStats('warrior', eq, [], 1).maxMp).toBe(4);
+  });
+
+  it('rage locks hp at 30% and restores full hp when it ends', () => {
+    const run = createRun([np('warrior', 'a')], 3, 'a');
+    const sim: Sim = { run, world: createWorld(run, run.map.startId, null, new Set(['a'])), moves: {}, events: [] };
+    run.players.a.skillRanks = [0, 0, 0, 1];
+    run.players.a.level = 6;
+    const p = sim.world.players.a;
+    p.mp = 99;
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    expect(p.hp).toBeCloseTo(p.stats.maxHp * 0.3);
+    heal(sim, p, 50);
+    stepSim(sim, 0.1);
+    expect(p.hp).toBeCloseTo(p.stats.maxHp * 0.3);
+    for (let i = 0; i < 16; i++) stepSim(sim, 1);
+    expect(p.hp).toBe(p.stats.maxHp);
+  });
+});
+
+describe('knight skills', () => {
+  const setup = (players = ['a']) => {
+    const run = createRun(players.map((id) => np(id === 'a' ? 'knight' : 'mage', id)), 3, 'a');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(players)), moves: {}, events: [] };
+    run.players.a.skillRanks = [1, 1, 1, 1];
+    run.players.a.level = 6;
+    run.players.a.autoAttack = false;
+    const p = sim.world.players.a;
+    p.mp = 999;
+    const e = sim.world.enemies[0];
+    e.castLock = 99;
+    e.x = p.x + 60;
+    e.y = p.y;
+    sim.world.enemies = [e];
+    return { sim, p, e };
+  };
+
+  it('passive gives 15% damage reduction and casting taunts all enemies', () => {
+    const { sim, p, e } = setup();
+    expect(damageTakenMult(p, sim)).toBeCloseTo(0.85);
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    expect(e.tauntId).toBe('a');
+    expect(e.tauntTime).toBeGreaterThan(0);
+  });
+
+  it('shield bash hits and stuns; with no enemies it refunds', () => {
+    const { sim, p, e } = setup();
+    e.hp = e.maxHp = 9999;
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    for (let i = 0; i < 10; i++) stepSim(sim, 0.02);
+    expect(e.hp).toBeLessThan(9999);
+    expect(e.stun).toBeGreaterThan(0);
+    sim.world.enemies = [];
+    p.skillCds[0].remaining = 0;
+    const mp = p.mp;
+    applyAction(sim, 'a', { k: 'skill', i: 0 });
+    expect(p.mp).toBe(mp);
+    expect(p.skillCds[0].remaining).toBe(0);
+  });
+
+  it('holy shield absorbs damage and converts leftover into healing', () => {
+    const { sim, p } = setup();
+    sim.world.enemies = [];
+    applyAction(sim, 'a', { k: 'skill', i: 1 });
+    const shield = shieldTotal(p);
+    expect(shield).toBeCloseTo(p.stats.maxHp * 0.3);
+    p.hp = 50;
+    damagePlayer(sim, p, 10, true);
+    expect(p.hp).toBe(50);
+    expect(shieldTotal(p)).toBeLessThan(shield);
+    const left = shieldTotal(p);
+    for (let i = 0; i < 6; i++) stepSim(sim, 1);
+    expect(shieldTotal(p)).toBe(0);
+    expect(p.hp).toBeCloseTo(50 + left * 0.6, 0);
+  });
+
+  it('thorns reflects pre-defense damage to the attacker', () => {
+    const { sim, p, e } = setup();
+    e.hp = e.maxHp = 9999;
+    damagePlayer(sim, p, 5, true, e, 20);
+    expect(9999 - e.hp).toBe(15); // 20 × 75%
+    sim.run.players.a.skillRanks[2] = 0;
+    const hp = e.hp;
+    damagePlayer(sim, p, 5, true, e, 20);
+    expect(e.hp).toBe(hp);
+  });
+
+  it('domain shields allies, roots and damages enemies, and reduces own damage', () => {
+    const { sim, p, e } = setup(['a', 'b']);
+    e.hp = e.maxHp = 99999;
+    const ally = sim.world.players.b;
+    ally.x = p.x + 100;
+    ally.y = p.y;
+    applyAction(sim, 'a', { k: 'skill', i: 3 });
+    expect(shieldTotal(ally)).toBeCloseTo(p.stats.maxHp);
+    expect(shieldTotal(p)).toBe(0);
+    expect(e.root).toBeGreaterThan(0);
+    expect(e.hp).toBeLessThan(99999);
+    expect(damageTakenMult(p, sim)).toBeCloseTo(0.85 * 0.1);
   });
 });

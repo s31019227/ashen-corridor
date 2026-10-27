@@ -8,8 +8,8 @@ export interface SkillDef {
   id: string;
   nameKey: string;
   descKey: string;
-  /** active：施放型；toggle：開關型（再按一次關閉） */
-  kind: 'active' | 'toggle';
+  /** active：施放型；toggle：開關型（再按一次關閉）；passive：學習後常駐生效，不能施放 */
+  kind: 'active' | 'toggle' | 'passive';
   maxRank: number;
   /** 各等級冷卻（秒） */
   cooldown: number[];
@@ -24,6 +24,12 @@ export interface PassiveDef {
   nameKey: string;
   descKey: string;
   values: Record<string, number>;
+}
+
+/** 職業自己的升級成長（覆蓋 config/leveling.ts 的預設值） */
+export interface ClassGrowth {
+  percent?: Partial<Record<keyof Stats, number>>;
+  flat?: Partial<Record<keyof Stats, number>>;
 }
 
 export interface ClassDef {
@@ -45,6 +51,7 @@ export interface ClassDef {
   rangedDamageMult?: number;
   /** 以 PLAYER_BASE_STATS 為基礎的倍率 */
   statMultipliers: Partial<Record<keyof Stats, number>>;
+  growth?: ClassGrowth;
   color: number;
   passive: PassiveDef;
   /** 3 個小技能 */
@@ -88,6 +95,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 0,
     // 魔力上限 30（基礎 60 × 0.5）
     statMultipliers: { maxHp: 1.2, maxMp: 0.5, atk: 1.2, def: 1.0, moveSpeed: 1.0 },
+    // 魔力每級固定 +1
+    growth: { percent: { maxMp: 0 }, flat: { maxMp: 1 } },
     color: 0xb05a3c,
     // 被動：血量越低面板攻擊力越高，線性增加，血量降到 threshold% 時達到 +maxBonus%
     passive: passive('warrior', 'bloodlust', { maxBonus: 100, threshold: 30 }),
@@ -126,7 +135,8 @@ export const CLASSES: Record<ClassId, ClassDef> = {
       // 每級冷卻 −5 秒
       cooldown: [60, 55, 50],
       mpCost: [20],
-      values: { hpFloor: [30], range: [100], bonus: [50], duration: [15] },
+      // 持續期間血量鎖定在 hpLock%，結束時回復全部血量
+      values: { hpLock: [30], range: [100], bonus: [50], duration: [15] },
     },
   },
   knight: {
@@ -139,9 +149,44 @@ export const CLASSES: Record<ClassId, ClassDef> = {
     attackKnockback: 20,
     statMultipliers: { maxHp: 1.5, atk: 0.85, def: 2.0, moveSpeed: 0.9 },
     color: 0x8a8f9e,
-    passive: passive('knight', 'bulwark'),
-    skills: [skill('knight', 'shieldbash', 7, 10), skill('knight', 'taunt', 12, 8), skill('knight', 'guard', 14, 15)],
-    ultimate: ult('knight', 'fortress', 70, 40),
+    // 被動：常駐減傷；每次施放技能嘲諷場上所有敵人 tauntDuration 秒
+    passive: passive('knight', 'provoke', { damageReduction: 15, tauntDuration: 3 }),
+    skills: [
+      {
+        ...keys('knight', 'shieldbash'),
+        kind: 'active',
+        maxRank: 5,
+        cooldown: [3],
+        mpCost: [5],
+        values: { ratio: [100, 110, 120, 130, 140], stun: [0.5], range: [300] },
+      },
+      {
+        ...keys('knight', 'holyshield'),
+        kind: 'active',
+        maxRank: 5,
+        cooldown: [8],
+        mpCost: [15],
+        // 護盾 = 最大血量 shield%；時間到還有剩，回復剩餘量的 heal%
+        values: { shield: [30, 35, 40, 45, 50], duration: [5], heal: [60, 70, 80, 90, 100] },
+      },
+      {
+        ...keys('knight', 'thorns'),
+        kind: 'passive',
+        maxRank: 5,
+        cooldown: [0],
+        mpCost: [0],
+        // 受到攻擊時，把「計算防禦前的傷害」的 reflect% 反彈給攻擊者
+        values: { reflect: [75, 90, 105, 120, 135] },
+      },
+    ],
+    ultimate: {
+      ...keys('knight', 'domain'),
+      kind: 'active',
+      maxRank: 3,
+      cooldown: [28, 24, 20],
+      mpCost: [20],
+      values: { range: [400], shield: [100], shieldDuration: [5], root: [1], ratio: [500], selfDr: [90], selfDrDuration: [1.5] },
+    },
   },
   ranger: {
     id: 'ranger',

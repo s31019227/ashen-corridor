@@ -7,7 +7,7 @@ import { POTIONS } from '../config/potions';
 import { difficultyLevel } from '../core/difficulty';
 import { LEVEL_CONFIG } from '../config/leveling';
 import { canLearn, skillPoints, xpForNext } from '../core/leveling';
-import { passiveAttackMult } from '../sim/effects';
+import { passiveAttackMult, shieldTotal } from '../sim/effects';
 import { THEME } from '../config/theme';
 import { cdProgress, type Cooldown } from '../core/cooldown';
 import { t } from '../i18n';
@@ -269,6 +269,7 @@ export class UIScene extends Phaser.Scene {
       btn.container.setAlpha(rank > 0 ? 1 : 0.4);
       btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
       btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
+      if (skill.kind === 'passive') btn.cdText.setText(rank > 0 ? t('skillInfo.passiveShort') : '');
       const on = skill.kind === 'toggle' && p.toggles[skill.id];
       (btn.container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);
     });
@@ -294,7 +295,8 @@ export class UIScene extends Phaser.Scene {
     for (const pr of Object.values(run.players)) {
       if (pr.id === net.myId) continue;
       const e = world.players[pr.id];
-      const state = !e?.connected ? t('hud.offline') : e.dead ? t('hud.down') : `${Math.ceil(e.hp)}/${e.stats.maxHp}`;
+      const shield = e && shieldTotal(e) > 0 ? ` +${Math.ceil(shieldTotal(e))}` : '';
+      const state = !e?.connected ? t('hud.offline') : e.dead ? t('hud.down') : `${Math.ceil(e.hp)}/${e.stats.maxHp}${shield}`;
       lines.push(`${pr.name}（${t(CLASSES[pr.classId].nameKey)}）${state}`);
     }
     this.teamText.setText(lines.join('\n'));
@@ -321,7 +323,7 @@ export class UIScene extends Phaser.Scene {
       inputHub.joystick.y = this.joystick.value.y;
     }
 
-    this.hpBar.setValue(p.hp, p.stats.maxHp);
+    this.hpBar.setValue(p.hp, p.stats.maxHp, true, shieldTotal(p));
     this.mpBar.setValue(p.mp, p.stats.maxMp);
     this.goldText.setText(t('hud.gold', { gold: me.gold }));
     this.killsText.setText(t('hud.kills', { kills: run.kills }));
