@@ -42,6 +42,8 @@ interface ActionButton {
   learnBtn?: Phaser.GameObjects.Container;
   /** 技能給自己的 buff / 護盾還剩多久：按鈕外圈倒數 */
   durRing?: Phaser.GameObjects.Graphics;
+  /** 名稱下方的耗魔量（藍字） */
+  mpText?: Phaser.GameObjects.Text;
 }
 
 /** HUD：血魔條、金幣、小地圖、技能 / 藥水按鈕、虛擬搖桿、提示訊息 */
@@ -206,6 +208,10 @@ export class UIScene extends Phaser.Scene {
       const btn = this.makeButton(x, y, action, t(skills[i].nameKey), r, i === 3 ? 0x4a1a2a : THEME.button);
       btn.rankText = addText(this, 0, -r - 9, '', 11, THEME.textGold, { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
       btn.container.add(btn.rankText);
+      // 技能名稱往上一點，下面放藍色耗魔量
+      btn.label.setY(-7);
+      btn.mpText = addText(this, 0, 9, '', 11, '#7aa0ff').setOrigin(0.5);
+      btn.container.addAt(btn.mpText, btn.container.getIndex(btn.label) + 1);
       btn.learnBtn = this.makeLearnButton(x + r * 0.75, y - r * 0.75, `learn${i + 1}` as GameAction);
       btn.durRing = this.add.graphics();
       btn.container.add(btn.durRing);
@@ -284,6 +290,9 @@ export class UIScene extends Phaser.Scene {
       btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
       btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
       if (skill.kind === 'passive') btn.cdText.setText(rank > 0 ? t('skillInfo.passiveShort') : '');
+      // 耗魔量：還沒學時顯示 1 級的消耗；不耗魔的技能不顯示
+      const mpCost = rankValue(skill.mpCost, Math.max(1, rank));
+      btn.mpText!.setText(skill.kind !== 'passive' && mpCost > 0 ? `${mpCost}` : '');
       // 魔力不足：技能按鈕變暗（開關技能關閉時不耗魔，不算）
       const turningOff = skill.kind === 'toggle' && p.toggles[skill.id];
       const cost = rank > 0 && skill.kind !== 'passive' && !turningOff ? rankValue(skill.mpCost, rank) : 0;
