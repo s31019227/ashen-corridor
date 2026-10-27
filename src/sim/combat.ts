@@ -7,7 +7,8 @@ import { calcDamage } from '../core/damage';
 import { edgeDist } from '../core/geometry';
 import { addXp } from '../core/leveling';
 import { addGold } from '../core/runState';
-import { attackInterval, attackPower, attackRange } from './effects';
+import { attackInterval, attackPower, attackRange, heal } from './effects';
+import { addDamageThreat } from './threat';
 import { onLevelUp } from './world';
 import { selectTarget } from '../core/targeting';
 import type { EnemyEntity, PlayerEntity, Sim } from './types';
@@ -144,6 +145,7 @@ function updateProjectiles(sim: Sim, dt: number) {
 export function hitEnemy(sim: Sim, ownerId: string, e: EnemyEntity, damage: number, knockback: number, crit: boolean) {
   if (!e.alive) return;
   e.hp = Math.max(0, e.hp - damage);
+  addDamageThreat(sim, e, ownerId, damage);
   sim.events.push({ k: 'dmg', x: e.x, y: e.y - enemyRadius(e) - 12, v: damage, crit });
   const owner = sim.world.players[ownerId];
   if (owner && knockback > 0 && ENEMIES[e.defId].behavior !== 'boss') {
@@ -160,9 +162,7 @@ export function hitEnemy(sim: Sim, ownerId: string, e: EnemyEntity, damage: numb
 
 function healFromLifesteal(sim: Sim, p: PlayerEntity, damage: number, lifesteal: number) {
   if (lifesteal <= 0 || p.dead) return;
-  const hp = Math.round((damage * lifesteal) / 100);
-  p.hp = Math.min(p.stats.maxHp, p.hp + hp);
-  sim.events.push({ k: 'heal', pid: p.id, hp, mp: 0 });
+  heal(sim, p, (damage * lifesteal) / 100);
 }
 
 /** 擊殺：每位在線玩家都拿到一份金幣與經驗 */

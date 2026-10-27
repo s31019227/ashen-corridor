@@ -50,6 +50,7 @@ export const en: Record<I18nKey, string> = {
   'hud.room': '',
   'hud.offline': '',
   'hud.down': '',
+  'hud.downRevive': '',
   'msg.youDied': '',
   'msg.waitRevive': '',
   'msg.revived': '',

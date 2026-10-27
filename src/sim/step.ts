@@ -9,7 +9,7 @@ import { hpLock, moveSpeed, tickPlayerTimers } from './effects';
 import { updateToggles } from '../systems/SkillSystem';
 import { updatePlayerAttacks } from './combat';
 import { updateEnemies } from './enemies';
-import type { Sim } from './types';
+import type { PlayerEntity, Sim } from './types';
 import { INTERACT_POS, ROOM_BOUNDS, createWorld, isCombatRoom, syncRunFromWorld } from './world';
 
 const R = PLAYER_CONFIG.radius;
@@ -22,6 +22,7 @@ export function stepSim(sim: Sim, dt: number) {
     return;
   }
   movePlayers(sim, dt);
+  updateRevives(sim, dt);
   updatePlayerAttacks(sim, dt);
   updateEnemies(sim, dt);
   updateInteractables(sim);
@@ -80,6 +81,35 @@ function updateInteractables(sim: Sim) {
   }
 }
 
+/** 復活：血量、魔力回到設定的比例，仇恨從零開始 */
+export function revivePlayer(sim: Sim, p: PlayerEntity) {
+  const { reviveHpPercent, reviveMpPercent } = MULTIPLAYER_CONFIG;
+  p.dead = false;
+  p.reviveProgress = 0;
+  p.hp = Math.max(1, Math.round((p.stats.maxHp * reviveHpPercent) / 100));
+  p.mp = Math.round((p.stats.maxMp * reviveMpPercent) / 100);
+  p.invuln = 1;
+  sim.events.push({ k: 'revive', pid: p.id });
+}
+
+/**
+ * 墓碑復活：倒地的人原地變成墓碑，活著的隊友站在半徑 reviveRadius 的圈內累積進度，
+ * 滿 reviveTime 秒就救起來；圈內沒人時每秒扣掉總進度的 reviveDecayPercentPerSec%。
+ */
+function updateRevives(sim: Sim, dt: number) {
+  const { reviveRadius, reviveTime, reviveDecayPercentPerSec } = MULTIPLAYER_CONFIG;
+  const players = Object.values(sim.world.players);
+  for (const p of players) {
+    if (!p.dead || !p.connected) continue;
+    const helped = players.some(
+      (o) => o !== p && o.connected && !o.dead && Math.hypot(o.x - p.x, o.y - p.y) <= reviveRadius,
+    );
+    if (helped) p.reviveProgress += dt;
+    else p.reviveProgress = Math.max(0, p.reviveProgress - (reviveTime * reviveDecayPercentPerSec * dt) / 100);
+    if (p.reviveProgress >= reviveTime) revivePlayer(sim, p);
+  }
+}
+
 /** 戰鬥格清空：標記清除、倒地隊友復活；Boss 格清空則進入結算倒數 */
 function checkCleared(sim: Sim) {
   const w = sim.world;
@@ -90,11 +120,7 @@ function checkCleared(sim: Sim) {
   sim.events.push({ k: 'cleared', roomId: w.roomId });
   for (const p of Object.values(w.players)) {
     sim.events.push({ k: 'toast', pid: p.id, key: 'hud.roomCleared', color: '#7fb069' });
-    if (p.dead && p.connected) {
-      p.dead = false;
-      p.hp = Math.max(1, Math.round((p.stats.maxHp * MULTIPLAYER_CONFIG.reviveHpPercent) / 100));
-      sim.events.push({ k: 'revive', pid: p.id });
-    }
+    if (p.dead && p.connected) revivePlayer(sim, p);
   }
   if (wasBoss) w.ending = { victory: true, delay: 1.2 };
 }

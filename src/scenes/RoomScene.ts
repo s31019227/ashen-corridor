@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { getAltarEffect } from '../config/altar';
 import { CLASSES, rankValue } from '../config/classes';
 import { ENEMIES } from '../config/enemies';
+import { MULTIPLAYER_CONFIG } from '../config/multiplayer';
 import { GAME_CONFIG } from '../config/game';
 import { PLAYER_CONFIG } from '../config/player';
 import { ROOM_COLORS, THEME } from '../config/theme';
@@ -435,7 +436,8 @@ export class RoomScene extends Phaser.Scene {
       v.container.setPosition(pos.x, pos.y);
       const angle = Math.atan2(p.fy, p.fx);
       v.facing.setPosition(Math.cos(angle) * (R + 6), Math.sin(angle) * (R + 6)).setRotation(angle);
-      v.body.setAlpha(p.dead ? 0.25 : p.invuln > 0 ? 0.6 : 1);
+      // 倒地時身體隱藏，改畫墓碑（drawTombstones）
+      v.body.setAlpha(p.dead ? 0 : p.invuln > 0 ? 0.6 : 1);
       v.facing.setVisible(!p.dead);
     }
   }
@@ -506,6 +508,32 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
+  /** 倒地的玩家：墓碑、復活圈、復活進度 */
+  private drawTombstones(g: Phaser.GameObjects.Graphics) {
+    const world = net.world!;
+    const { reviveRadius, reviveTime } = MULTIPLAYER_CONFIG;
+    const players = Object.values(world.players);
+    for (const p of players) {
+      if (!p.connected || !p.dead) continue;
+      const helped = players.some(
+        (o) => o !== p && o.connected && !o.dead && Math.hypot(o.x - p.x, o.y - p.y) <= reviveRadius,
+      );
+      g.fillStyle(0x80c080, helped ? 0.12 : 0.05).fillCircle(p.x, p.y, reviveRadius);
+      g.lineStyle(2, helped ? 0x9ad070 : 0x707070, helped ? 0.9 : 0.5).strokeCircle(p.x, p.y, reviveRadius);
+      // 墓碑
+      g.fillStyle(0x6a6a74, 1).fillRoundedRect(p.x - 12, p.y - 16, 24, 30, { tl: 10, tr: 10, bl: 2, br: 2 });
+      g.fillStyle(0x2a2a30, 1).fillRect(p.x - 1.5, p.y - 10, 3, 14).fillRect(p.x - 6, p.y - 6, 12, 3);
+      // 進度
+      const progress = Math.min(1, p.reviveProgress / reviveTime);
+      if (progress > 0) {
+        g.lineStyle(4, 0x9ad070, 1);
+        g.beginPath();
+        g.arc(p.x, p.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        g.strokePath();
+      }
+    }
+  }
+
   /** 技能的持續效果：獻祭光環、狂怒、衝鋒、重擊蓄力 */
   private drawSkillEffects(g: Phaser.GameObjects.Graphics) {
     const world = net.world!;
@@ -537,7 +565,7 @@ export class RoomScene extends Phaser.Scene {
     }
   }
 
-  /** 怪物狀態：暈眩（黃色星環）、定身（藍色圈）、被嘲諷（紅色 !） */
+  /** 怪物狀態：暈眩（黃色星環）、定身（藍色圈）、目標（頭上小三角是牠正在打的玩家顏色，打自己時加紅框） */
   private drawEnemyStatus(g: Phaser.GameObjects.Graphics) {
     const world = net.world!;
     for (const e of world.enemies) {
@@ -552,9 +580,11 @@ export class RoomScene extends Phaser.Scene {
         }
       }
       if (e.root > 0) g.lineStyle(3, 0x60a0ff, 0.9).strokeCircle(pos.x, pos.y, r + 4);
-      if (e.tauntId) {
-        g.fillStyle(0xe05040, 1).fillRect(pos.x + r - 2, pos.y - r - 14, 4, 9);
-        g.fillCircle(pos.x + r, pos.y - r - 2, 2);
+      const target = e.targetId ? net.run!.players[e.targetId] : undefined;
+      if (target) {
+        const ty = pos.y - r - 20;
+        g.fillStyle(target.color, 1).fillTriangle(pos.x - 5, ty - 6, pos.x + 5, ty - 6, pos.x, ty + 2);
+        if (e.targetId === net.myId) g.lineStyle(2, 0xe04030, 0.9).strokeCircle(pos.x, pos.y, r + 7);
       }
     }
   }
@@ -568,6 +598,7 @@ export class RoomScene extends Phaser.Scene {
     for (const tg of world.telegraphs) {
       this.paintTelegraph(g, tg, 0.12, 0.3, Math.min(1, (tg.elapsed + since) / tg.warnTime), THEME.telegraph);
     }
+    this.drawTombstones(g);
     this.drawSkillEffects(g);
     this.drawEnemyStatus(g);
     const me = net.meEntity;

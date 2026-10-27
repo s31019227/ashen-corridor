@@ -67,6 +67,7 @@ export function createPlayerEntity(p: PlayerRun, x: number, y: number, connected
     toggleTick: 0,
     empower: null,
     shields: [],
+    reviveProgress: 0,
   };
 }
 
@@ -94,7 +95,12 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
   ids.forEach((id) => {
     const p = run.players[id];
     const old = prev?.players[id];
-    if (old?.dead || p.hp <= 0) p.hp = Math.max(1, Math.round(playerStats(p).maxHp * MULTIPLAYER_CONFIG.reviveHpPercent / 100));
+    if (old?.dead || p.hp <= 0) {
+      // 換格時倒地的人一起復活（血量、魔力回到復活比例）
+      const st = playerStats(p);
+      p.hp = Math.max(1, Math.round((st.maxHp * MULTIPLAYER_CONFIG.reviveHpPercent) / 100));
+      p.mp = Math.round((st.maxMp * MULTIPLAYER_CONFIG.reviveMpPercent) / 100);
+    }
     const pos = spawnPoint(fromDir, Math.max(0, online.indexOf(id)), online.length);
     const e = createPlayerEntity(p, pos.x, pos.y, connected.has(id));
     if (old) {
@@ -171,7 +177,8 @@ function makeEnemy(world: World, defId: string, x: number, y: number, scale: { h
     strafe: Math.random() < 0.5 ? 1 : -1,
     stun: 0,
     root: 0,
-    tauntId: null,
+    threat: {},
+    targetId: null,
   };
 }
 

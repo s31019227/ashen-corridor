@@ -7,6 +7,7 @@ import { clamp, dist, edgeDist, pointSegmentDist } from '../core/geometry';
 import { enemyRadius, hitEnemy } from './combat';
 import { absorbWithShields, damageTakenMult, hpLock, passiveSkillRank } from './effects';
 import type { EnemyEntity, PlayerEntity, Sim, TelegraphEntity } from './types';
+import { clearThreat, topThreatPlayer } from './threat';
 import { ROOM_BOUNDS } from './world';
 
 // 怪物 AI 與技能預警。怪物會追擊最近的活著玩家。
@@ -17,14 +18,11 @@ function alivePlayers(sim: Sim): PlayerEntity[] {
   return Object.values(sim.world.players).filter((p) => p.connected && !p.dead);
 }
 
-/** 怪物的目標：被嘲諷時攻擊嘲諷者，否則最近的活著玩家 */
+/** 怪物的目標：仇恨最高的玩家（誰最高就打誰）；還沒有人有仇恨時追最近的玩家 */
 function targetPlayer(sim: Sim, e: EnemyEntity): PlayerEntity | null {
-  if (e.tauntId) {
-    const t = sim.world.players[e.tauntId];
-    if (t?.connected && !t.dead) return t;
-    e.tauntId = null;
-  }
-  return nearestPlayer(sim, e);
+  const target = topThreatPlayer(sim, e) ?? nearestPlayer(sim, e);
+  e.targetId = target?.id ?? null;
+  return target;
 }
 
 function nearestPlayer(sim: Sim, e: EnemyEntity): PlayerEntity | null {
@@ -64,6 +62,9 @@ export function damagePlayer(sim: Sim, p: PlayerEntity, amount: number, ignoreIn
     p.dead = true;
     p.lockedId = null;
     p.targetId = null;
+    p.reviveProgress = 0;
+    p.toggles = {};
+    clearThreat(sim, p.id);
     sim.events.push({ k: 'toast', pid: p.id, key: 'msg.youDied', color: '#d05050' });
   }
 }

@@ -538,10 +538,10 @@ describe('knight skills', () => {
     const { sim, p, e } = setup();
     expect(damageTakenMult(p, sim)).toBeCloseTo(0.85);
     applyAction(sim, 'a', { k: 'skill', i: 1 });
-    expect(e.tauntId).toBe('a');
-    // 沒有時間限制：過一段時間仍然嘲諷中，騎士倒下才解除
-    for (let i = 0; i < 20; i++) stepSim(sim, 0.5);
-    expect(e.tauntId).toBe('a');
+    expect(e.threat.a).toBeGreaterThan(0);
+    e.castLock = 0;
+    stepSim(sim, 0.05);
+    expect(e.targetId).toBe('a');
   });
 
   it('shield bash hits and stuns; with no enemies it refunds', () => {
@@ -619,16 +619,101 @@ describe('thorns and taunt details', () => {
     expect(e.hp).toBe(9999);
   });
 
-  it('taunt ends when the knight goes down', () => {
+  it('a downed knight drops off the threat table', () => {
     const run = createRun([np('knight', 'a'), np('mage', 'b')], 3, 'a');
     const mob = run.map.cells.find((c) => c.type === 'mob')!;
     const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['a', 'b'])), moves: {}, events: [] };
     run.players.a.skillRanks = [0, 1, 0, 0];
     sim.world.players.a.mp = 99;
     applyAction(sim, 'a', { k: 'skill', i: 1 });
-    expect(sim.world.enemies.every((e) => e.tauntId === 'a')).toBe(true);
-    sim.world.players.a.dead = true;
-    stepSim(sim, 0.05);
-    expect(sim.world.enemies.filter((e) => e.alive).every((e) => e.tauntId === null)).toBe(true);
+    expect(sim.world.enemies.every((e) => e.threat.a > 0)).toBe(true);
+    damagePlayer(sim, sim.world.players.a, 999999, true);
+    expect(sim.world.enemies.every((e) => e.threat.a === undefined)).toBe(true);
+  });
+});
+
+describe('threat', () => {
+  const setup = () => {
+    const run = createRun([np('knight', 'k'), np('mage', 'm')], 3, 'k');
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    const sim: Sim = { run, world: createWorld(run, mob.id, null, new Set(['k', 'm'])), moves: {}, events: [] };
+    run.players.k.autoAttack = false;
+    run.players.m.autoAttack = false;
+    const e = sim.world.enemies[0];
+    e.hp = e.maxHp = 99999;
+    e.castLock = 0;
+    sim.world.enemies = [e];
+    return { sim, e, k: sim.world.players.k, m: sim.world.players.m };
+  };
+
+  it('damage builds threat, knight x2.5, highest threat is the target', () => {
+    const { sim, e } = setup();
+    hitEnemy(sim, 'm', e, 100, 0, false);
+    hitEnemy(sim, 'k', e, 50, 0, false);
+    expect(e.threat.m).toBe(100);
+    expect(e.threat.k).toBe(125);
+    stepSim(sim, 0.01);
+    expect(e.targetId).toBe('k');
+    hitEnemy(sim, 'm', e, 30, 0, false); // 130 > 125：誰最高就打誰
+    stepSim(sim, 0.01);
+    expect(e.targetId).toBe('m');
+  });
+
+  it('healing and ally shields add threat to enemies already in combat', () => {
+    const { sim, e, m } = setup();
+    heal(sim, m, 40);
+    expect(e.threat.m).toBeUndefined(); // 還沒開戰
+    hitEnemy(sim, 'k', e, 1, 0, false);
+    m.hp = 10;
+    heal(sim, m, 40);
+    expect(e.threat.m).toBeCloseTo(20); // 40 × 0.5
+  });
+
+  it('taunt sets the knight to 110% of the top threat but can be overtaken', () => {
+    const { sim, e } = setup();
+    sim.run.players.k.skillRanks = [0, 1, 0, 0];
+    sim.world.players.k.mp = 99;
+    hitEnemy(sim, 'm', e, 1000, 0, false);
+    applyAction(sim, 'k', { k: 'skill', i: 1 });
+    expect(e.threat.k).toBeCloseTo(1100);
+    stepSim(sim, 0.01);
+    expect(e.targetId).toBe('k');
+    hitEnemy(sim, 'm', e, 200, 0, false);
+    stepSim(sim, 0.01);
+    expect(e.targetId).toBe('m');
+  });
+});
+
+describe('tombstone revive', () => {
+  const setup = () => {
+    const run = createRun([np('warrior', 'a'), np('mage', 'b')], 3, 'a');
+    const sim: Sim = { run, world: createWorld(run, run.map.startId, null, new Set(['a', 'b'])), moves: {}, events: [] };
+    const a = sim.world.players.a;
+    const b = sim.world.players.b;
+    damagePlayer(sim, a, 999999, true);
+    expect(a.dead).toBe(true);
+    return { sim, a, b };
+  };
+
+  it('a teammate inside the circle for 10s revives at 30% hp and mp', () => {
+    const { sim, a, b } = setup();
+    b.x = a.x + 100;
+    b.y = a.y;
+    for (let i = 0; i < 99; i++) stepSim(sim, 0.1);
+    expect(a.dead).toBe(true);
+    stepSim(sim, 0.2);
+    expect(a.dead).toBe(false);
+    expect(a.hp).toBe(Math.round(a.stats.maxHp * 0.3));
+    expect(a.mp).toBe(Math.round(a.stats.maxMp * 0.3));
+  });
+
+  it('progress drains 10% per second while nobody is inside', () => {
+    const { sim, a, b } = setup();
+    b.x = a.x + 100;
+    b.y = a.y;
+    for (let i = 0; i < 50; i++) stepSim(sim, 0.1); // 5 秒
+    b.x = a.x + 400;
+    for (let i = 0; i < 20; i++) stepSim(sim, 0.1); // 離開 2 秒：扣 2 秒
+    expect(a.reviveProgress).toBeCloseTo(3, 1);
   });
 });

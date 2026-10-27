@@ -5,6 +5,7 @@ import { calcDamage } from '../core/damage';
 import { edgeDist } from '../core/geometry';
 import { enemyRadius, hitEnemy, skillTarget } from '../sim/combat';
 import { addBuff, addShield, attackPower } from '../sim/effects';
+import { addHealThreat, taunt } from '../sim/threat';
 import type { PlayerEntity, Sim } from '../sim/types';
 
 const R = PLAYER_CONFIG.radius;
@@ -117,7 +118,9 @@ export const SKILL_HANDLERS: Record<string, SkillHandler> = {
     for (const ally of Object.values(sim.world.players)) {
       if (ally.id === p.id || !ally.connected || ally.dead) continue;
       if (edgeDist(p, R, ally, R) > range) continue;
-      addShield(ally, `domain:${p.id}`, (p.stats.maxHp * v(ctx, 'shield')) / 100, v(ctx, 'shieldDuration'));
+      const amount = (p.stats.maxHp * v(ctx, 'shield')) / 100;
+      addShield(ally, `domain:${p.id}`, amount, v(ctx, 'shieldDuration'));
+      addHealThreat(sim, p.id, amount); // 幫隊友加護盾也產生仇恨
     }
     const atk = attackPower(sim, p);
     for (const e of sim.world.enemies) {
@@ -147,14 +150,14 @@ export function runSkill(ctx: SkillContext): boolean {
   return ok;
 }
 
-/** 施放技能時的被動：騎士嘲諷場上所有敵人（沒有時間限制） */
+/** 施放技能時的被動：騎士嘲諷場上所有敵人（仇恨變成最高的 110%，之後仍可能被搶走） */
 function onSkillCast(sim: Sim, p: PlayerEntity) {
   const classId = sim.run.players[p.id].classId;
   if (classId !== 'knight') return;
   let any = false;
   for (const e of sim.world.enemies) {
     if (!e.alive) continue;
-    e.tauntId = p.id;
+    taunt(e, p.id);
     any = true;
   }
   if (any) sim.events.push({ k: 'float', x: p.x, y: p.y - 56, key: 'msg.taunt', color: '#e05040' });

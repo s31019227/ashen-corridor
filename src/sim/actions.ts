@@ -9,6 +9,8 @@ import { EQUIPMENT } from '../config/equipment';
 import { addGold } from '../core/runState';
 import { EQUIP_SLOTS, POTION_IDS, type EquipSlot, type PotionId } from '../core/types';
 import { runSkill } from '../systems/SkillSystem';
+import { hpLock } from './effects';
+import { addHealThreat } from './threat';
 import type { PlayerAction, Sim } from './types';
 import { refreshPlayerStats } from './world';
 
@@ -81,10 +83,12 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       const def = POTIONS[potionId];
       const hp = Math.round((p.stats.maxHp * def.hpPercent) / 100);
       const mp = Math.round((p.stats.maxMp * def.mpPercent) / 100);
-      p.hp = Math.min(p.stats.maxHp, p.hp + hp);
+      const hpBefore = p.hp;
+      if (hpLock(p) === null) p.hp = Math.min(p.stats.maxHp, p.hp + hp);
       p.mp = Math.min(p.stats.maxMp, p.mp + mp);
       cdTrigger(cd, def.cooldown);
-      sim.events.push({ k: 'heal', pid, hp, mp });
+      addHealThreat(sim, pid, p.hp - hpBefore);
+      sim.events.push({ k: 'heal', pid, hp: Math.round(p.hp - hpBefore), mp });
       return toast(sim, pid, 'msg.potionUsed', COLOR.green, { name: def.nameKey });
     }
     case 'interact':

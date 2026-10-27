@@ -6,6 +6,7 @@ import { PLAYER_CONFIG } from '../config/player';
 import { POTIONS } from '../config/potions';
 import { difficultyLevel } from '../core/difficulty';
 import { LEVEL_CONFIG } from '../config/leveling';
+import { MULTIPLAYER_CONFIG } from '../config/multiplayer';
 import { canLearn, skillPoints, xpForNext } from '../core/leveling';
 import { passiveAttackMult, shieldTotal } from '../sim/effects';
 import { THEME } from '../config/theme';
@@ -296,7 +297,12 @@ export class UIScene extends Phaser.Scene {
       if (pr.id === net.myId) continue;
       const e = world.players[pr.id];
       const shield = e && shieldTotal(e) > 0 ? ` +${Math.ceil(shieldTotal(e))}` : '';
-      const state = !e?.connected ? t('hud.offline') : e.dead ? t('hud.down') : `${Math.ceil(e.hp)}/${e.stats.maxHp}${shield}`;
+      const revive = e?.dead ? Math.floor((e.reviveProgress / MULTIPLAYER_CONFIG.reviveTime) * 100) : 0;
+      const state = !e?.connected
+        ? t('hud.offline')
+        : e.dead
+          ? t('hud.downRevive', { pct: revive })
+          : `${Math.ceil(e.hp)}/${e.stats.maxHp}${shield}`;
       lines.push(`${pr.name}（${t(CLASSES[pr.classId].nameKey)}）${state}`);
     }
     this.teamText.setText(lines.join('\n'));
@@ -338,6 +344,10 @@ export class UIScene extends Phaser.Scene {
     this.unlockBtn.setVisible(p.lockedId !== null);
     this.refreshMinimap();
     this.deadText.setVisible(p.dead);
+    if (p.dead) {
+      const pct = Math.floor((p.reviveProgress / MULTIPLAYER_CONFIG.reviveTime) * 100);
+      this.deadText.setText(t('msg.waitRevive', { pct }));
+    }
     this.refreshTeam();
 
     this.skillButtons.forEach((btn, i) => this.drawCooldown(btn, i === 0 ? p.attackCd : p.skillCds[i - 1]));

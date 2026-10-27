@@ -1,6 +1,7 @@
 import { CLASSES } from '../config/classes';
 import type { Buff, BuffMods, PlayerEntity, Sim } from './types';
 import { rankValue } from '../config/classes';
+import { addHealThreat } from './threat';
 
 // 玩家的即時加成：技能 buff、被動。所有「實際數值」都經過這裡，畫面與模擬才會一致。
 
@@ -32,13 +33,18 @@ export function tickPlayerTimers(sim: Sim, p: PlayerEntity, dt: number) {
   }
 }
 
-/** 回復血量（血量鎖定中不會回復），並送出治療事件 */
-export function heal(sim: Sim, p: PlayerEntity, amount: number) {
+/**
+ * 回復血量（血量鎖定中不會回復），並送出治療事件。
+ * 實際回復量會產生仇恨，算在 sourceId（預設是被治療的人）身上。
+ */
+export function heal(sim: Sim, p: PlayerEntity, amount: number, sourceId = p.id) {
   if (hpLock(p) !== null || amount <= 0) return;
   const before = p.hp;
   p.hp = Math.min(p.stats.maxHp, p.hp + amount);
   const gained = Math.round(p.hp - before);
-  if (gained > 0) sim.events.push({ k: 'heal', pid: p.id, hp: gained, mp: 0 });
+  if (gained <= 0) return;
+  sim.events.push({ k: 'heal', pid: p.id, hp: gained, mp: 0 });
+  addHealThreat(sim, sourceId, gained);
 }
 
 export function addShield(p: PlayerEntity, id: string, amount: number, duration: number, healPct = 0) {

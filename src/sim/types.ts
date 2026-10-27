@@ -69,6 +69,8 @@ export interface PlayerEntity {
   /** 下一次普攻的強化（例如戰士重擊） */
   empower: { mult: number; lifesteal: number } | null;
   shields: Shield[];
+  /** 倒地時的復活進度（秒），隊友站在墓碑圈內會累積 */
+  reviveProgress: number;
 }
 
 export interface EnemyEntity {
@@ -96,8 +98,10 @@ export interface EnemyEntity {
   stun: number;
   /** 定身剩餘秒數：不能移動，但可以攻擊、施法 */
   root: number;
-  /** 被嘲諷：強制攻擊這位玩家（沒有時間限制，對方倒下或離線時解除） */
-  tauntId: string | null;
+  /** 仇恨表：玩家 id → 仇恨值 */
+  threat: Record<string, number>;
+  /** 目前攻擊的玩家（畫面標記用） */
+  targetId: string | null;
 }
 
 export interface ProjectileEntity {
