@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CLASSES } from '../config/classes';
+import { CLASSES, rankValue } from '../config/classes';
 import { GAME_CONFIG } from '../config/game';
 import { ACTION_KEY_LABEL, type GameAction } from '../config/keybinds';
 import { PLAYER_CONFIG } from '../config/player';
@@ -283,6 +283,10 @@ export class UIScene extends Phaser.Scene {
       btn.rankText!.setText(rank > 0 ? `${'●'.repeat(rank)}${'○'.repeat(skill.maxRank - rank)}` : '');
       btn.learnBtn!.setVisible(!p.dead && canLearn(me, i));
       if (skill.kind === 'passive') btn.cdText.setText(rank > 0 ? t('skillInfo.passiveShort') : '');
+      // 魔力不足：技能按鈕變暗（開關技能關閉時不耗魔，不算）
+      const turningOff = skill.kind === 'toggle' && p.toggles[skill.id];
+      const cost = rank > 0 && skill.kind !== 'passive' && !turningOff ? rankValue(skill.mpCost, rank) : 0;
+      if (cost > 0 && p.mp < cost) btn.overlay.fillStyle(0x000000, 0.65).fillCircle(0, 0, btn.radius);
       this.drawDurationRing(btn, skill.id);
       const on = skill.kind === 'toggle' && p.toggles[skill.id];
       btn.shape.setStrokeStyle(on ? 4 : 2, on ? 0xe06030 : THEME.panelBorder);
