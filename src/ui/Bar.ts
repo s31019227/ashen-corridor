@@ -10,7 +10,11 @@ export class Bar extends Phaser.GameObjects.Container {
   private barWidth: number;
   private label: Phaser.GameObjects.Text;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, w: number, h: number, color: number) {
+  /**
+   * roundDown：數字無條件捨去（魔力用：4.6 要顯示 4，否則會看到 5 卻放不出耗魔 5 的技能）；
+   * 預設無條件進位（血量用：0.4 血還活著時顯示 1）。
+   */
+  constructor(scene: Phaser.Scene, x: number, y: number, w: number, h: number, color: number, private roundDown = false) {
     super(scene, x, y);
     this.barWidth = w;
     const bg = scene.add.rectangle(0, 0, w, h, THEME.barBg).setOrigin(0, 0.5).setStrokeStyle(1, THEME.panelBorder);
@@ -29,6 +33,7 @@ export class Bar extends Phaser.GameObjects.Container {
     this.extraFill.x = this.fill.width;
     this.extraFill.width = this.barWidth * extraRatio;
     const shield = extra > 0 ? ` (+${Math.ceil(extra)})` : '';
-    this.label.setText(showText ? `${Math.ceil(value)} / ${max}${shield}` : '');
+    const shown = this.roundDown ? Math.floor(value) : Math.ceil(value);
+    this.label.setText(showText ? `${shown} / ${max}${shield}` : '');
   }
 }

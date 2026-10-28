@@ -91,7 +91,7 @@ export class UIScene extends Phaser.Scene {
     // 左上：職業、血魔條、金幣
     addText(this, 20, 6, `${t(CLASSES[me.classId].nameKey)}${net.isMultiplayer ? `　${me.name}` : ''}`, 14, THEME.textDim);
     this.hpBar = new Bar(this, 20, 42, 280, 18, THEME.hp);
-    this.mpBar = new Bar(this, 20, 64, 280, 14, THEME.mp);
+    this.mpBar = new Bar(this, 20, 64, 280, 14, THEME.mp, true);
     // 經驗條與等級
     this.xpBar = new Bar(this, 20, 80, 280, 6, 0xc9a227);
     this.levelText = addText(this, 20, 86, '', 15, THEME.textGold);
