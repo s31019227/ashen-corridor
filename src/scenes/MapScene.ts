@@ -8,6 +8,7 @@ import { net } from '../net/client';
 import { Button } from '../ui/Button';
 import { addBackdrop } from '../ui/Panel';
 import { addText } from '../ui/text';
+import { canTeleport, isCombatRoom } from '../sim/world';
 import { enterRoom } from './flow';
 import { SCENES } from './keys';
 
@@ -49,14 +50,19 @@ export function drawMap(
   const cells = map.cells.map((cell) => {
     const p = pos(cell.x, cell.y);
     const c = scene.add.container(p.x, p.y);
-    const rect = scene.add.rectangle(0, 0, cellSize, cellSize, ROOM_COLORS[cell.type]).setStrokeStyle(
+    // 未探索的格子顏色調暗，已探索的維持原色
+    const rect = scene.add.rectangle(0, 0, cellSize, cellSize, ROOM_COLORS[cell.type], cell.visited ? 1 : 0.32).setStrokeStyle(
       cell.id === currentId ? 3 : 1,
       cell.id === currentId ? 0xffffff : 0x000000,
     );
     c.add(rect);
     if (cellSize >= 36) {
       const label = t(`room.${cell.type}`);
-      c.add(addText(scene, 0, 0, label.slice(0, 2), Math.round(cellSize * 0.28)).setOrigin(0.5));
+      c.add(
+        addText(scene, 0, 0, label.slice(0, 2), Math.round(cellSize * 0.28), cell.visited ? THEME.text : THEME.textDim)
+          .setOrigin(0.5)
+          .setAlpha(cell.visited ? 1 : 0.6),
+      );
     }
     if (cell.id === currentId) {
       c.add(scene.add.circle(0, cellSize * 0.32, Math.max(3, cellSize * 0.1), 0xffffff));
@@ -75,6 +81,11 @@ export function drawMap(
 export class MapScene extends Phaser.Scene {
   private mode: MapMode = 'intro';
   private done = false;
+  /** 檢視模式中選取要傳送的格子 */
+  private selected: number | null = null;
+  private teleportBtn?: Button;
+  private teleportText?: Phaser.GameObjects.Text;
+  private selectRing?: Phaser.GameObjects.Rectangle;
 
   constructor() {
     super(SCENES.map);
@@ -83,6 +94,7 @@ export class MapScene extends Phaser.Scene {
   init(data: { mode?: MapMode }) {
     this.mode = data.mode ?? 'intro';
     this.done = false;
+    this.selected = null;
   }
 
   create() {
@@ -107,7 +119,8 @@ export class MapScene extends Phaser.Scene {
     this.drawLegend(width - 200, 150);
 
     if (this.mode === 'view') {
-      new Button(this, width / 2, height - 44, t('map.close'), () => this.close(), { width: 180 });
+      new Button(this, width / 2 + 100, height - 44, t('map.close'), () => this.close(), { width: 180 });
+      this.setupTeleport(cells);
       return;
     }
 
@@ -145,6 +158,41 @@ export class MapScene extends Phaser.Scene {
       this.add.rectangle(x + 10, y + i * 34, 20, 20, ROOM_COLORS[type]);
       addText(this, x + 30, y + i * 34, t(`room.${type}`), 16).setOrigin(0, 0.5);
     });
+    const ey = y + LEGEND_TYPES.length * 34 + 10;
+    this.add.rectangle(x + 10, ey, 20, 20, ROOM_COLORS.mob);
+    addText(this, x + 30, ey, t('map.explored'), 16).setOrigin(0, 0.5);
+    this.add.rectangle(x + 10, ey + 34, 20, 20, ROOM_COLORS.mob, 0.32);
+    addText(this, x + 30, ey + 34, t('map.unexplored'), 16, THEME.textDim).setOrigin(0, 0.5);
+  }
+
+  /** 檢視模式：點已探索的格子 → 按「傳送」全隊移過去（房主檢查條件） */
+  private setupTeleport(cells: Phaser.GameObjects.Container[]) {
+    const run = net.run!;
+    const { width, height } = GAME_CONFIG;
+    const blocked = isCombatRoom(run, run.currentRoomId);
+    this.teleportText = addText(this, width / 2 - 90, 86, t(blocked ? 'map.teleportBlocked' : 'map.teleportHint'), 16, blocked ? THEME.textRed : THEME.textDim).setOrigin(0.5);
+    this.teleportBtn = new Button(this, width / 2 - 100, height - 44, t('map.teleport'), () => this.teleport(), { width: 180 });
+    this.teleportBtn.setEnabled(false);
+    this.selectRing = this.add.rectangle(0, 0, 70, 70).setStrokeStyle(3, 0xc9a227).setVisible(false);
+    run.map.cells.forEach((cell, id) => {
+      if (!cell.visited || id === run.currentRoomId) return;
+      const c = cells[id];
+      const hit = this.add.zone(c.x, c.y, 62, 62).setInteractive({ useHandCursor: true });
+      hit.on('pointerdown', (_p: Phaser.Input.Pointer, _x: number, _y: number, ev: Phaser.Types.Input.EventData) => {
+        ev.stopPropagation();
+        if (!canTeleport(run, run.currentRoomId, id)) return;
+        this.selected = id;
+        this.selectRing!.setPosition(c.x, c.y).setVisible(true);
+        this.teleportText!.setText(t('map.teleportTo', { room: t(`room.${cell.type}`) })).setColor(THEME.textGold);
+        this.teleportBtn!.setEnabled(true);
+      });
+    });
+  }
+
+  private teleport() {
+    if (this.selected === null) return;
+    net.act({ k: 'teleport', cellId: this.selected });
+    this.close();
   }
 
   private enter() {

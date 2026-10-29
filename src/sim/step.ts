@@ -12,7 +12,7 @@ import { updateZones } from './zones';
 import { CLASSES } from '../config/classes';
 import { updateEnemies } from './enemies';
 import type { PlayerEntity, Sim } from './types';
-import { INTERACT_POS, ROOM_BOUNDS, createWorld, isCombatRoom, syncRunFromWorld } from './world';
+import { INTERACT_POS, ROOM_BOUNDS, isCombatRoom, switchRoom, syncRunFromWorld } from './world';
 
 const R = PLAYER_CONFIG.radius;
 
@@ -153,9 +153,5 @@ function checkTransition(sim: Sim) {
     threshold: GAME_CONFIG.room.edgeThreshold + R,
     neighbors: n,
   });
-  if (!dir) return;
-  syncRunFromWorld(sim);
-  const connected = new Set(Object.values(w.players).filter((p) => p.connected).map((p) => p.id));
-  sim.world = createWorld(sim.run, n[dir]!, dir, connected, w);
-  sim.events.push({ k: 'room', roomId: sim.world.roomId, fromDir: dir });
+  if (dir) switchRoom(sim, n[dir]!, dir);
 }

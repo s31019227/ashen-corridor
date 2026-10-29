@@ -24,6 +24,10 @@ import { enemyDamageTakenMult, enemySpeedMult } from '../src/sim/status';
 import { difficultyLevel, difficultyScale } from '../src/core/difficulty';
 import { CLASSES, rankValue } from '../src/config/classes';
 import { MAP_CONFIG } from '../src/config/map';
+import { EQUIPMENT } from '../src/config/equipment';
+import { SHOP_CONFIG } from '../src/config/shop';
+import { rarityWeights, rollGeneralStock, shopEquipmentCount } from '../src/core/shopStock';
+import { Rng } from '../src/core/rng';
 
 describe('mapGen', () => {
   it('generates valid floors for many seeds', () => {
@@ -145,19 +149,67 @@ describe('inventory', () => {
 });
 
 describe('shops', () => {
-  it('every shop has random equipment and some potions', () => {
+  it('start shop is stocked at generation with common items; other shops stock on first visit', () => {
     const stocks = new Set<string>();
     for (let seed = 1; seed <= 30; seed++) {
-      const map = generateFloor({ floor: 1, seed });
-      const shops = map.cells.filter((c) => c.type === 'shop' || c.type === 'start');
-      expect(shops.length).toBe(MAP_CONFIG.counts.shop);
-      for (const c of shops) {
-        expect(c.shopStock!.some((id) => id.startsWith('potion:'))).toBe(true);
-        expect(c.shopStock!.some((id) => !id.startsWith('potion:'))).toBe(true);
-      }
-      stocks.add(map.cells[map.startId].shopStock!.join());
+      const run = createRun([np('warrior', 'a')], seed, 'a');
+      const map = run.map;
+      expect(map.cells.filter((c) => c.type === 'shop' || c.type === 'start').length).toBe(MAP_CONFIG.counts.shop);
+      const start = map.cells[map.startId].shopStock!;
+      expect(start.some((id) => id.startsWith('potion:'))).toBe(true);
+      expect(start.filter((id) => !id.startsWith('potion:')).every((id) => EQUIPMENT[id].tier === 1)).toBe(true);
+      stocks.add(start.join());
+      const shop = map.cells.find((c) => c.type === 'shop')!;
+      expect(shop.shopStock).toBeUndefined();
+      createWorld(run, shop.id, null, new Set(['a']));
+      expect(shop.shopStock!.some((id) => id.startsWith('potion:'))).toBe(true);
     }
     expect(stocks.size).toBeGreaterThan(20); // 起始商店不是固定商品
+  });
+
+  it('more items and higher rarity as difficulty rises, but always some common items', () => {
+    expect(shopEquipmentCount(0)).toBe(6);
+    expect(shopEquipmentCount(4)).toBe(6);
+    expect(shopEquipmentCount(5)).toBe(7);
+    expect(shopEquipmentCount(24)).toBe(10);
+    const avgTier = (difficulty: number) => {
+      let sum = 0;
+      let n = 0;
+      for (let seed = 1; seed <= 200; seed++) {
+        const eq = rollGeneralStock(new Rng(seed), difficulty).filter((id) => !id.startsWith('potion:'));
+        expect(eq.length).toBe(shopEquipmentCount(difficulty));
+        expect(new Set(eq).size).toBe(eq.length);
+        expect(eq.filter((id) => EQUIPMENT[id].tier === 1).length).toBeGreaterThanOrEqual(SHOP_CONFIG.general.minCommon);
+        for (const id of eq) sum += EQUIPMENT[id].tier;
+        n += eq.length;
+      }
+      return sum / n;
+    };
+    expect(avgTier(24)).toBeGreaterThan(avgTier(0) + 0.4);
+    expect(rarityWeights(0)[2]).toBe(0);
+    expect(rarityWeights(4)).toEqual([60, 35, 5]);
+  });
+});
+
+describe('teleport', () => {
+  it('moves the whole team to a visited cell only when the current cell is clear', () => {
+    const run = createRun([np('warrior', 'a'), np('knight', 'b')], 7, 'a');
+    const sim: Sim = { run, world: createWorld(run, run.map.startId, null, new Set(['a', 'b'])), moves: {}, events: [] };
+    const mob = run.map.cells.find((c) => c.type === 'mob')!;
+    applyAction(sim, 'a', { k: 'teleport', cellId: mob.id });
+    expect(sim.world.roomId).toBe(run.map.startId); // 沒去過
+    // 走進小怪格（未清空）後不能傳送回去
+    sim.world = createWorld(run, mob.id, null, new Set(['a', 'b']));
+    applyAction(sim, 'a', { k: 'teleport', cellId: run.map.startId });
+    expect(sim.world.roomId).toBe(mob.id);
+    markCleared(run.map, mob.id);
+    sim.world.enemies = [];
+    applyAction(sim, 'b', { k: 'teleport', cellId: run.map.startId });
+    expect(sim.world.roomId).toBe(run.map.startId);
+    expect(Object.keys(sim.world.players).sort()).toEqual(['a', 'b']);
+    expect(sim.events.some((e) => e.k === 'room')).toBe(true);
+    applyAction(sim, 'a', { k: 'teleport', cellId: run.map.startId }); // 已在這格
+    expect(sim.events.filter((e) => e.k === 'room').length).toBe(1);
   });
 });
 

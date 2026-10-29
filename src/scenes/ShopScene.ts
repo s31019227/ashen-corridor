@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getAltarEffect } from '../config/altar';
 import { CLASSES } from '../config/classes';
-import { EQUIPMENT, canEquip } from '../config/equipment';
+import { EQUIPMENT, RARITY, canEquip } from '../config/equipment';
 import { GAME_CONFIG } from '../config/game';
 import { POTIONS } from '../config/potions';
 import { potionItemId } from '../config/shop';
@@ -48,6 +48,8 @@ export class ShopScene extends Phaser.Scene {
   private mode: ShopMode = 'shop';
   private stock: string[] = [];
   private tab: Tab = 'equipment';
+  /** 裝備商品太多時分頁 */
+  private page = 0;
   private content!: Phaser.GameObjects.Container;
   private lastKey = '';
   /** 第一次按「賣」後等待確認的部位 */
@@ -63,6 +65,7 @@ export class ShopScene extends Phaser.Scene {
     const run = net.run!;
     this.stock = data.cellId !== undefined ? (run.map.cells[data.cellId].shopStock ?? []) : [];
     this.lastKey = '';
+    this.page = 0;
     this.tab = data.mode === 'shop' ? 'equipment' : 'stats';
   }
 
@@ -140,17 +143,34 @@ export class ShopScene extends Phaser.Scene {
       });
     const step = 64 * S;
     const top = 136;
+    // 一頁放得下幾列（最後一列不能壓到下方的訊息列）
+    const perPage = Math.floor((610 - step / 2 - top) / step) + 1;
+    const pages = Math.max(1, Math.ceil(items.length / perPage));
+    this.page = Math.min(this.page, pages - 1);
+    if (pages > 1) {
+      const flip = (d: number) => {
+        this.page = (this.page + d + pages) % pages;
+        this.render();
+      };
+      this.add2(new Button(this, 560, 76, '◀', () => flip(-1), { width: 44, height: 38, fontSize: 16 }));
+      this.add2(addText(this, 618, 76, t('shop.page', { page: this.page + 1, total: pages }), 15, THEME.textDim).setOrigin(0.5));
+      this.add2(new Button(this, 676, 76, '▶', () => flip(1), { width: 44, height: 38, fontSize: 16 }));
+    }
+    const shown = items.slice(this.page * perPage, (this.page + 1) * perPage);
     let groupStart = 0;
-    items.forEach((item, i) => {
+    shown.forEach((item, i) => {
       const def = EQUIPMENT[item.id];
       const y = top + i * step;
+      const rarity = RARITY[def.tier];
       const owned = isOwned(run, item);
       const usable = canEquip(def, run.classId);
       this.add2(this.add.rectangle(436, y, 568, step - 6, THEME.button, 0.6));
       this.add2(addSlotIcon(this, 172, y, def.slot, def.armorType, 40 * S, !usable));
       const tx = 172 + 26 * S;
-      const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, usable ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
-      this.add2(addText(this, tx + 8 + name.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
+      // 名稱用稀有度的顏色，後面標稀有度與限定職業 / 防具類型
+      const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, usable ? rarity.color : THEME.textDim).setOrigin(0, 0.5));
+      const tag = this.add2(addText(this, tx + 8 + name.width, y - 17 * S, t(rarity.nameKey), 12, rarity.color).setOrigin(0, 0.5));
+      this.add2(addText(this, tag.x + 8 + tag.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
       this.add2(addText(this, tx, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
       if (!owned && usable) this.renderCompare(item.id, tx, y + 21 * S);
       this.add2(addText(this, 590, y - 12 * S, t('shop.price', { price: item.price }), 15, THEME.textGold).setOrigin(1, 0.5));
@@ -160,7 +180,7 @@ export class ShopScene extends Phaser.Scene {
       this.add2(btn);
 
       // 同部位的最後一個商品：畫出合併的部位欄
-      const next = items[i + 1];
+      const next = shown[i + 1];
       if (!next || EQUIPMENT[next.id].slot !== def.slot) {
         const y0 = top + groupStart * step - step / 2 + 3;
         const y1 = y + step / 2 - 3;
@@ -296,7 +316,7 @@ export class ShopScene extends Phaser.Scene {
       this.add2(addSlotIcon(this, x + 22, y, slot, def?.armorType, 34 * S, !def));
       this.add2(addText(this, x + 46 * S, y, t(`slot.${slot}`), 14, THEME.textDim).setOrigin(0, 0.5));
       const nx = x + 46 * S + 50 * S;
-      this.add2(addText(this, nx, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? THEME.text : THEME.textDim).setOrigin(0, 0.5));
+      this.add2(addText(this, nx, y - 9 * S, def ? t(def.nameKey) : t('shop.empty'), 15, def ? RARITY[def.tier].color : THEME.textDim).setOrigin(0, 0.5));
       const statsLine = def ? formatStats(def.stats, t('shop.noStats')) : t('shop.slotEmpty');
       this.add2(addText(this, nx, y + 10 * S, statsLine, 12, def ? THEME.textGreen : THEME.textDim).setOrigin(0, 0.5));
       // 商店中可以賣出身上的裝備（購買價的 75%），按兩下確認

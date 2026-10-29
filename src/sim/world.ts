@@ -5,6 +5,7 @@ import { MULTIPLAYER_CONFIG } from '../config/multiplayer';
 import { cooldown, cdTrigger } from '../core/cooldown';
 import { difficultyLevel, difficultyScale } from '../core/difficulty';
 import { Rng, randomSeed } from '../core/rng';
+import { rollGeneralStock } from '../core/shopStock';
 import type { RoomBounds } from '../core/roomTransition';
 import { playerStats, type PlayerRun, type RunState } from '../core/runState';
 import { OPPOSITE_DIR, type Dir } from '../core/types';
@@ -79,6 +80,9 @@ export function createWorld(run: RunState, roomId: number, fromDir: Dir | null, 
   run.currentRoomId = roomId;
   const cell = run.map.cells[roomId];
   cell.visited = true;
+  if (cell.type === 'shop' && !cell.shopStock) {
+    cell.shopStock = rollGeneralStock(new Rng(randomSeed()), difficultyLevel(run.map));
+  }
   const world: World = {
     roomId,
     players: {},
@@ -213,6 +217,21 @@ export function onLevelUp(sim: Sim, pid: string) {
 }
 
 /** 把模擬中的血魔寫回存檔資料 */
+/** 換到另一格：走到邊緣（fromDir）或傳送（null，出現在中央） */
+export function switchRoom(sim: Sim, roomId: number, fromDir: Dir | null) {
+  syncRunFromWorld(sim);
+  const prev = sim.world;
+  const connected = new Set(Object.values(prev.players).filter((p) => p.connected).map((p) => p.id));
+  sim.world = createWorld(sim.run, roomId, fromDir, connected, prev);
+  sim.events.push({ k: 'room', roomId, fromDir });
+}
+
+/** 能不能傳送到某格：目標已探索、不是目前這格，且目前這格沒有怪物 */
+export function canTeleport(run: RunState, fromId: number, toId: number): boolean {
+  const target = run.map.cells[toId];
+  return !!target && target.visited && toId !== fromId && !isCombatRoom(run, fromId);
+}
+
 export function syncRunFromWorld(sim: Sim) {
   for (const e of Object.values(sim.world.players)) {
     const p = sim.run.players[e.id];

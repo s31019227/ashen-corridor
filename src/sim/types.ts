@@ -239,7 +239,9 @@ export type PlayerAction =
   | { k: 'buy'; item: string }
   | { k: 'sell'; slot: string }
   | { k: 'carry'; potion: string }
-  | { k: 'altar'; cellId: number };
+  | { k: 'altar'; cellId: number }
+  /** 傳送到已探索的格子（全隊一起） */
+  | { k: 'teleport'; cellId: number };
 
 /** 模擬時需要的全部狀態 */
 export interface Sim {

@@ -12,7 +12,7 @@ import { runSkill } from '../systems/SkillSystem';
 import { hpLock } from './effects';
 import { addHealThreat } from './threat';
 import type { PlayerAction, Sim } from './types';
-import { refreshPlayerStats } from './world';
+import { canTeleport, refreshPlayerStats, switchRoom } from './world';
 
 // 玩家動作：由房主執行（自己的動作直接呼叫，其他人的動作從連線收到）。
 
@@ -120,6 +120,10 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       if (carryPotion(pr, potionId)) toast(sim, pid, 'shop.potionCarried', COLOR.green, { name: POTIONS[potionId].nameKey });
       return;
     }
+    case 'teleport':
+      if (sim.world.ending || !canTeleport(sim.run, sim.world.roomId, a.cellId)) return;
+      switchRoom(sim, a.cellId, null);
+      return;
     case 'altar': {
       const effect = getAltarEffect(cell.altarEffect);
       if (a.cellId !== cell.id || cell.type !== 'altar' || !effect || pr.usedCells.includes(cell.id)) return;
