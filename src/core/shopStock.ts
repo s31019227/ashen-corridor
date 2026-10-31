@@ -60,6 +60,22 @@ export function rollGeneralStock(rng: Rng, difficulty: number): string[] {
   return [...picked, ...rollPotions(rng, cfg.potionCount)];
 }
 
+/** 過層獎勵：不重複的幾件裝備，稀有度依 floorReward 權重抽 */
+export function rollRewardChoices(rng: Rng): string[] {
+  const cfg = SHOP_CONFIG.floorReward;
+  const pools: string[][] = [];
+  for (let tier = 1; tier <= MAX_TIER; tier++) {
+    pools[tier] = rng.shuffle(Object.values(EQUIPMENT).filter((e) => e.tier === tier).map((e) => e.id));
+  }
+  const weights = cfg.rarityWeights.map((weight, k) => ({ tier: k + 1, weight })).filter((w) => w.weight > 0);
+  const picked: string[] = [];
+  for (let i = 0; i < cfg.choices; i++) {
+    const tier = rng.weighted(weights.filter((w) => pools[w.tier].length > 0)).tier;
+    picked.push(pools[tier].pop()!);
+  }
+  return picked;
+}
+
 function rollPotions(rng: Rng, count: number): string[] {
   return rng.shuffle([...POTION_IDS]).slice(0, count).map(potionItemId);
 }

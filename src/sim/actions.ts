@@ -4,7 +4,7 @@ import { learnSkill } from '../core/leveling';
 import { ROOM_EVENT_CONFIG } from '../config/map';
 import { POTIONS } from '../config/potions';
 import { cdReady, cdTrigger } from '../core/cooldown';
-import { buyItem, carryPotion, resolveShopItem, sellEquipped } from '../core/inventory';
+import { buyItem, carryPotion, resolveShopItem, sellEquipped, sellPrice } from '../core/inventory';
 import { EQUIPMENT } from '../config/equipment';
 import { addGold } from '../core/runState';
 import { EQUIP_SLOTS, POTION_IDS, type EquipSlot, type PotionId } from '../core/types';
@@ -102,7 +102,7 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
         refreshPlayerStats(sim, pid);
         return toast(sim, pid, item.kind === 'potion' ? 'shop.potionUnlocked' : 'shop.bought', COLOR.green, { name: item.nameKey });
       }
-      const keys = { noGold: 'shop.noGold', owned: 'shop.owned', wrongClass: 'shop.wrongClass', unknown: 'shop.owned' };
+      const keys = { noGold: 'shop.noGold', owned: 'shop.owned', unknown: 'shop.owned' };
       return toast(sim, pid, keys[result], COLOR.red);
     }
     case 'sell': {
@@ -118,6 +118,25 @@ export function applyAction(sim: Sim, pid: string, a: PlayerAction) {
       const potionId = a.potion as PotionId;
       if (!inShop || !POTION_IDS.includes(potionId)) return;
       if (carryPotion(pr, potionId)) toast(sim, pid, 'shop.potionCarried', COLOR.green, { name: POTIONS[potionId].nameKey });
+      return;
+    }
+    case 'reward': {
+      const choices = pr.rewardChoices;
+      if (!choices) return;
+      if (a.item === null) {
+        pr.rewardChoices = undefined;
+        return;
+      }
+      if (!choices.includes(a.item)) return;
+      // 換下來的舊裝備自動以賣出價換成金幣
+      const def = EQUIPMENT[a.item];
+      const old = pr.equipment[def.slot];
+      const refund = old ? sellPrice(old) : 0;
+      pr.equipment[def.slot] = a.item;
+      pr.gold += refund;
+      pr.rewardChoices = undefined;
+      refreshPlayerStats(sim, pid);
+      toast(sim, pid, refund > 0 ? 'msg.rewardTakenRefund' : 'msg.rewardTaken', COLOR.gold, { gold: refund });
       return;
     }
     case 'teleport':

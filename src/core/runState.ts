@@ -34,6 +34,8 @@ export interface PlayerRun {
   xp: number;
   /** 四個技能（3 小技能 + 大招）的等級，0 = 尚未學習 */
   skillRanks: number[];
+  /** 過層獎勵：還沒選的候選裝備（選完或跳過後清掉） */
+  rewardChoices?: string[];
 }
 
 /** 一局遊戲的狀態，也是存檔內容（由房主保存） */
@@ -117,6 +119,22 @@ export function migrateRun(data: RunState): RunState | null {
   data.floorDamage ??= {};
   data.floorCombatTime ??= 0;
   return data;
+}
+
+/**
+ * 進入下一層：用同一套規則生成新地圖，回到起點。
+ * 每人的特殊格使用紀錄清空（格子 id 會重複使用），並拿到一組過層獎勵候選裝備。
+ */
+export function advanceFloor(run: RunState, rewardFor: (p: PlayerRun) => string[]) {
+  run.floor += 1;
+  run.map = generateFloor({ floor: run.floor, seed: run.seed + run.floor * 7919 });
+  run.currentRoomId = run.map.startId;
+  run.floorDamage = {};
+  run.floorCombatTime = 0;
+  for (const p of Object.values(run.players)) {
+    p.usedCells = [];
+    p.rewardChoices = rewardFor(p);
+  }
 }
 
 export function addGold(p: PlayerRun, amount: number) {

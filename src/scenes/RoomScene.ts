@@ -18,6 +18,7 @@ import { inputHub, KeyboardInput } from '../systems/InputSystem';
 import { formatAltarEffect } from '../ui/statText';
 import { floatText, textStyle } from '../ui/text';
 import { SCENES } from './keys';
+import { switchTo } from './flow';
 
 export const TOAST_EVENT = 'toast';
 
@@ -43,6 +44,9 @@ const R = PLAYER_CONFIG.radius;
  */
 export class RoomScene extends Phaser.Scene {
   private roomId = -1;
+  private floor = 1;
+  /** 這一層的過層獎勵畫面是否已經開過（加入者選完後到快照更新前不要再開一次） */
+  private rewardShownFloor = 0;
   private keyboard!: KeyboardInput;
   private doors!: Phaser.GameObjects.Graphics;
   private overlay!: Phaser.GameObjects.Graphics;
@@ -65,6 +69,7 @@ export class RoomScene extends Phaser.Scene {
       return;
     }
     this.roomId = world.roomId;
+    this.floor = run.floor;
     this.players = new Map();
     this.enemies = new Map();
     this.projectiles = new Map();
@@ -383,9 +388,20 @@ export class RoomScene extends Phaser.Scene {
     const world = net.world;
     const run = net.run;
     if (!world || !run || this.leaving) return;
+    // 進入下一層：播放新地圖的開場
+    if (run.floor !== this.floor) {
+      this.leaving = true;
+      switchTo(this.game, SCENES.map, { mode: 'intro' });
+      return;
+    }
     if (world.roomId !== this.roomId) {
       this.changeRoom();
       return;
+    }
+    const me = net.me;
+    if (me?.rewardChoices && this.rewardShownFloor !== run.floor && !net.uiBlocked) {
+      this.rewardShownFloor = run.floor;
+      this.openOverlay(SCENES.reward, {});
     }
     const dt = Math.min(deltaMs / 1000, 0.05);
     this.handleActions();

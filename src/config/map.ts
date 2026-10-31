@@ -1,6 +1,8 @@
 import type { SpecialRoomType } from '../core/types';
 
 export const MAP_CONFIG = {
+  /** 總層數：打倒最後一層的 Boss 才算通關，其他層的 Boss 打完進入下一層（每層用同一套地圖規則） */
+  floorCount: 2,
   gridWidth: 7,
   gridHeight: 7,
   /** 每層總格數 */

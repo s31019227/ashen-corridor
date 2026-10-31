@@ -25,6 +25,8 @@ export const SHOP_CONFIG = {
       { difficulty: 24, weights: [25, 40, 35] },
     ],
   },
+  /** 打倒 Boss 進入下一層時，每人從幾件裝備中自選一件；稀有度權重為 普通 / 精良 / 稀有 */
+  floorReward: { choices: 3, rarityWeights: [0, 45, 55] },
   /** 賣出裝備時拿回購買價的比例 */
   sellRate: 0.75,
 };

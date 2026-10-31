@@ -12,7 +12,8 @@ import { updateZones } from './zones';
 import { CLASSES } from '../config/classes';
 import { updateEnemies } from './enemies';
 import type { PlayerEntity, Sim } from './types';
-import { INTERACT_POS, ROOM_BOUNDS, isCombatRoom, switchRoom, syncRunFromWorld } from './world';
+import { INTERACT_POS, ROOM_BOUNDS, goNextFloor, isCombatRoom, switchRoom, syncRunFromWorld } from './world';
+import { MAP_CONFIG } from '../config/map';
 
 const R = PLAYER_CONFIG.radius;
 
@@ -21,6 +22,7 @@ export function stepSim(sim: Sim, dt: number) {
   const w = sim.world;
   if (w.ending) {
     w.ending.delay -= dt;
+    if (w.ending.nextFloor && w.ending.delay <= 0) goNextFloor(sim);
     return;
   }
   movePlayers(sim, dt);
@@ -134,7 +136,8 @@ function checkCleared(sim: Sim) {
     sim.events.push({ k: 'toast', pid: p.id, key: 'hud.roomCleared', color: '#7fb069' });
     if (p.dead && p.connected) revivePlayer(sim, p);
   }
-  if (wasBoss) w.ending = { victory: true, delay: 1.2 };
+  // 最後一層的 Boss：通關結算；其他層：進入下一層
+  if (wasBoss) w.ending = { victory: true, delay: sim.run.floor < MAP_CONFIG.floorCount ? 2 : 1.2, nextFloor: sim.run.floor < MAP_CONFIG.floorCount };
 }
 
 function checkDefeat(sim: Sim) {

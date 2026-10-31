@@ -1,9 +1,10 @@
 import { DIFFICULTY_CONFIG } from '../config/difficulty';
 import type { FloorMap } from './types';
 
-/** 目前難度等級：已探索（visited）格數 − 1。重複進入已探索的格子不會增加 */
+/** 目前難度等級：已探索（visited）格數 − 1，加上樓層加成。重複進入已探索的格子不會增加 */
 export function difficultyLevel(map: FloorMap): number {
-  return Math.max(0, map.cells.filter((c) => c.visited).length - 1);
+  const explored = Math.max(0, map.cells.filter((c) => c.visited).length - 1);
+  return explored + (map.floor - 1) * DIFFICULTY_CONFIG.perFloor;
 }
 
 export interface DifficultyScale {

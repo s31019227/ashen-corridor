@@ -28,6 +28,7 @@ import { EQUIPMENT } from '../src/config/equipment';
 import { SHOP_CONFIG } from '../src/config/shop';
 import { rarityWeights, rollGeneralStock, shopEquipmentCount } from '../src/core/shopStock';
 import { Rng } from '../src/core/rng';
+import { DIFFICULTY_CONFIG } from '../src/config/difficulty';
 
 describe('mapGen', () => {
   it('generates valid floors for many seeds', () => {
@@ -119,10 +120,10 @@ describe('cooldown', () => {
 });
 
 describe('inventory', () => {
-  it('weapons are class-locked, armor is not', () => {
+  it('any class can buy any weapon', () => {
     const run = createPlayerRun(np('warrior'));
     run.gold = 1000;
-    expect(buyItem(run, 'ember_wand')).toBe('wrongClass');
+    expect(buyItem(run, 'ember_wand')).toBe('ok');
     expect(buyItem(run, 'iron_greatsword')).toBe('ok');
     expect(run.equipment.weapon).toBe('iron_greatsword');
     expect(buyItem(run, 'iron_greatsword')).toBe('owned');
@@ -896,5 +897,55 @@ describe('other classes (first pass)', () => {
     run(sim, 1);
     expect(other.hp).toBeLessThan(beforeBoom);
     expect(other.hp).toBeLessThan(hp);
+  });
+});
+
+describe('next floor', () => {
+  it('boss on floor 1 leads to floor 2 with +10 difficulty and a reward pick', () => {
+    const run = createRun([np('warrior', 'a'), np('mage', 'b')], 11, 'a');
+    const boss = run.map.bossId;
+    run.map.cells[boss].visited = true;
+    run.players.a.usedCells = [3];
+    run.players.a.equipment.weapon = 'iron_greatsword';
+    const sim: Sim = { run, world: createWorld(run, boss, null, new Set(['a', 'b'])), moves: {}, events: [] };
+    sim.world.players.b.dead = true;
+    sim.world.enemies = [];
+    for (let i = 0; i < 60; i++) stepSim(sim, 0.05);
+    expect(run.floor).toBe(2);
+    expect(sim.events.some((e) => e.k === 'floor')).toBe(true);
+    expect(sim.world.roomId).toBe(run.map.startId);
+    expect(run.map.cells.filter((c) => c.visited).length).toBe(1);
+    expect(difficultyLevel(run.map)).toBe(DIFFICULTY_CONFIG.perFloor);
+    expect(run.players.a.usedCells).toEqual([]);
+    expect(sim.world.players.b.dead).toBe(false);
+    expect(sim.world.players.b.hp).toBe(sim.world.players.b.stats.maxHp);
+    const choices = run.players.a.rewardChoices!;
+    expect(choices.length).toBe(SHOP_CONFIG.floorReward.choices);
+    expect(new Set(choices).size).toBe(choices.length);
+    // 選一件：裝上、舊裝備換成金幣、候選清掉
+    const gold = run.players.a.gold;
+    const pick = choices[0];
+    const slot = EQUIPMENT[pick].slot;
+    const old = run.players.a.equipment[slot];
+    applyAction(sim, 'a', { k: 'reward', item: 'not_offered' });
+    expect(run.players.a.rewardChoices).toBeDefined();
+    applyAction(sim, 'a', { k: 'reward', item: pick });
+    expect(run.players.a.equipment[slot]).toBe(pick);
+    expect(run.players.a.gold).toBe(gold + (old ? Math.floor(EQUIPMENT[old].price * SHOP_CONFIG.sellRate) : 0));
+    expect(run.players.a.rewardChoices).toBeUndefined();
+    applyAction(sim, 'b', { k: 'reward', item: null });
+    expect(run.players.b.rewardChoices).toBeUndefined();
+  });
+
+  it('boss on the last floor ends the run', () => {
+    const run = createRun([np('warrior', 'a')], 12, 'a');
+    run.floor = MAP_CONFIG.floorCount;
+    run.map.floor = run.floor;
+    const sim: Sim = { run, world: createWorld(run, run.map.bossId, null, new Set(['a'])), moves: {}, events: [] };
+    sim.world.enemies = [];
+    for (let i = 0; i < 60; i++) stepSim(sim, 0.05);
+    expect(run.floor).toBe(MAP_CONFIG.floorCount);
+    expect(sim.world.ending?.victory).toBe(true);
+    expect(sim.world.ending?.nextFloor).toBe(false);
   });
 });

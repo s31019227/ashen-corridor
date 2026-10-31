@@ -15,6 +15,7 @@ import { ShopScene } from './scenes/ShopScene';
 import { DialogScene } from './scenes/DialogScene';
 import { SettingsScene } from './scenes/SettingsScene';
 import { ResultScene } from './scenes/ResultScene';
+import { RewardScene } from './scenes/RewardScene';
 
 const hint = document.getElementById('rotate-hint');
 if (hint) hint.textContent = t('hint.rotate');
@@ -39,7 +40,7 @@ const game = new Phaser.Game({
   render: {
     antialias: true,
   },
-  scene: [MenuScene, ClassSelectScene, LobbyScene, MapScene, RoomScene, UIScene, ShopScene, DialogScene, SettingsScene, ResultScene],
+  scene: [MenuScene, ClassSelectScene, LobbyScene, MapScene, RoomScene, UIScene, ShopScene, DialogScene, SettingsScene, ResultScene, RewardScene],
 });
 
 attachRouter(game);

@@ -43,7 +43,11 @@ npm run i18n:sync  # 依 zh-TW.ts 同步 en.ts 的 key
 | 鎖定 / 解除 | 點擊敵人 / ESC 或點空地 | 點擊敵人 / 點空地或解除按鈕 |
 | 裝備、地圖、暫停 | C、M、P | 右上按鈕、點小地圖 |
 
-## 地圖與商店
+## 樓層、地圖與商店
+
+- 目前共 2 層（`MAP_CONFIG.floorCount`），每層用同一套規則生成地圖。打倒非最後一層的 Boss 會進入下一層：全員血魔回滿，難度 +10（`DIFFICULTY_CONFIG.perFloor`）。
+- 進入下一層時，每人從 3 件精良／稀有裝備中選一件直接裝上（換下的舊裝備自動以賣出價換成金幣），也可以跳過。
+- 打倒最後一層的 Boss 才算通關。
 
 - 地圖上已探索的格子是原色，未探索的格子較暗。
 - 打開地圖（M／點小地圖）點已探索的格子，按「傳送」就能全隊移過去；所在格子還有怪物時不能傳送。
@@ -77,6 +81,6 @@ tests/      core 單元測試
 ## 擴充點
 
 - **技能效果**：在 `src/systems/SkillSystem.ts` 的 `SKILL_HANDLERS` 以技能 id 註冊 handler（在房主的模擬中執行，多人自動同步）。
-- **裝備**：`src/config/equipment.ts`，武器限定職業，防具分重甲/輕甲/布甲。
-- **多層地圖**：`generateFloor({ floor, seed })` 已參數化，`RunState.floor` 已存在。
+- **裝備**：`src/config/equipment.ts`，武器不限職業，防具分重甲/輕甲/布甲，稀有度分普通/精良/稀有。
+- **樓層數**：改 `MAP_CONFIG.floorCount` 即可增加層數。
 - **英文**：填 `src/i18n/en.ts`，並把 `'en'` 加入 `AVAILABLE_LOCALES`。

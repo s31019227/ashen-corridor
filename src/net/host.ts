@@ -148,9 +148,9 @@ export class GameHost {
           const ev = sim.events.splice(0);
           this.pending.push(...ev);
           this.cb.onEvents(ev);
-          if (ev.some((e) => e.k === 'room' || e.k === 'cleared')) this.save();
+          if (ev.some((e) => e.k === 'room' || e.k === 'cleared' || e.k === 'floor')) this.save();
         }
-        if (sim.world.ending && sim.world.ending.delay <= 0) this.finish(sim.world.ending.victory);
+        if (sim.world.ending && !sim.world.ending.nextFloor && sim.world.ending.delay <= 0) this.finish(sim.world.ending.victory);
       } else {
         sendAcc += dt;
       }

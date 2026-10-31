@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { getAltarEffect } from '../config/altar';
-import { CLASSES } from '../config/classes';
-import { EQUIPMENT, RARITY, canEquip } from '../config/equipment';
+import { EQUIPMENT, RARITY } from '../config/equipment';
 import { GAME_CONFIG } from '../config/game';
 import { POTIONS } from '../config/potions';
 import { potionItemId } from '../config/shop';
@@ -163,20 +162,19 @@ export class ShopScene extends Phaser.Scene {
       const y = top + i * step;
       const rarity = RARITY[def.tier];
       const owned = isOwned(run, item);
-      const usable = canEquip(def, run.classId);
       this.add2(this.add.rectangle(436, y, 568, step - 6, THEME.button, 0.6));
-      this.add2(addSlotIcon(this, 172, y, def.slot, def.armorType, 40 * S, !usable));
+      this.add2(addSlotIcon(this, 172, y, def.slot, def.armorType, 40 * S));
       const tx = 172 + 26 * S;
-      // 名稱用稀有度的顏色，後面標稀有度與限定職業 / 防具類型
-      const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, usable ? rarity.color : THEME.textDim).setOrigin(0, 0.5));
+      // 名稱用稀有度的顏色，後面標稀有度與防具類型
+      const name = this.add2(addText(this, tx, y - 18 * S, t(item.nameKey), 17, rarity.color).setOrigin(0, 0.5));
       const tag = this.add2(addText(this, tx + 8 + name.width, y - 17 * S, t(rarity.nameKey), 12, rarity.color).setOrigin(0, 0.5));
-      this.add2(addText(this, tag.x + 8 + tag.width, y - 17 * S, this.itemTag(item.id), 12, usable ? THEME.textDim : THEME.textRed).setOrigin(0, 0.5));
+      this.add2(addText(this, tag.x + 8 + tag.width, y - 17 * S, this.itemTag(item.id), 12, THEME.textDim).setOrigin(0, 0.5));
       this.add2(addText(this, tx, y + 2 * S, formatStats(def.stats, t('shop.noStats')), 13, THEME.textDim).setOrigin(0, 0.5));
-      if (!owned && usable) this.renderCompare(item.id, tx, y + 21 * S);
+      if (!owned) this.renderCompare(item.id, tx, y + 21 * S);
       this.add2(addText(this, 590, y - 12 * S, t('shop.price', { price: item.price }), 15, THEME.textGold).setOrigin(1, 0.5));
-      const label = owned ? t('shop.equipped') : usable ? t('shop.buy') : t('shop.wrongClass');
+      const label = owned ? t('shop.equipped') : t('shop.buy');
       const btn = new Button(this, 656, y, label, () => this.buy(item), { width: 100, height: 36, fontSize: 15 });
-      btn.setEnabled(!owned && usable && run.gold >= item.price);
+      btn.setEnabled(!owned && run.gold >= item.price);
       this.add2(btn);
 
       // 同部位的最後一個商品：畫出合併的部位欄
@@ -227,10 +225,9 @@ export class ShopScene extends Phaser.Scene {
     this.add2(addText(this, 96, 140 + list.length * 58 * S - 8, t('shop.potionRule'), 13, THEME.textDim, { wordWrap: { width: 620 } }));
   }
 
-  /** 部位已經在左欄分組顯示，這裡只標限定職業或防具類型 */
+  /** 部位已經在左欄分組顯示，這裡只標防具類型 */
   private itemTag(itemId: string): string {
     const def = EQUIPMENT[itemId];
-    if (def.classes) return t('shop.classOnly', { classes: def.classes.map((c) => t(CLASSES[c].nameKey)).join('、') });
     if (def.armorType) return t(`armor.${def.armorType}`);
     return '';
   }

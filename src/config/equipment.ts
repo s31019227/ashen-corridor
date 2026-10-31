@@ -1,7 +1,7 @@
-import type { ArmorType, ClassId, EquipSlot, Stats } from '../core/types';
+import type { ArmorType, EquipSlot, Stats } from '../core/types';
 
 // 裝備設定。
-// - 武器限定職業（classes），其他職業無法購買。
+// - 武器不限職業，任何職業都能裝備（名稱只是風格）。
 // - 防具分三種類型：重甲（防禦、血量）、輕甲（爆擊、攻速、移速）、布甲（魔力、回魔、冷卻縮減），任何職業都能穿。
 // - 戒指不分職業。
 // - 階級（tier）就是稀有度：1 普通、2 精良、3 稀有。商店依難度抽稀有度（src/config/shop.ts）。
@@ -13,15 +13,13 @@ export interface EquipmentDef {
   tier: number;
   price: number;
   stats: Partial<Stats>;
-  /** 限定職業（只有武器會設定） */
-  classes?: ClassId[];
   armorType?: ArmorType;
 }
 
 const defs: EquipmentDef[] = [];
 
-function weapon(id: string, classId: ClassId, tier: number, price: number, stats: Partial<Stats>) {
-  defs.push({ id, slot: 'weapon', tier, price, stats, classes: [classId], nameKey: `item.${id}` });
+function weapon(id: string, tier: number, price: number, stats: Partial<Stats>) {
+  defs.push({ id, slot: 'weapon', tier, price, stats, nameKey: `item.${id}` });
 }
 
 function ring(id: string, tier: number, price: number, stats: Partial<Stats>) {
@@ -29,27 +27,27 @@ function ring(id: string, tier: number, price: number, stats: Partial<Stats>) {
 }
 
 // ── 武器 ──
-weapon('iron_greatsword', 'warrior', 1, 45, { atk: 4, critChance: 3 });
-weapon('bloodletter_axe', 'warrior', 2, 100, { atk: 9, critChance: 6 });
-weapon('guard_mace', 'knight', 1, 45, { atk: 3, def: 1 });
-weapon('oathkeeper', 'knight', 2, 100, { atk: 6, def: 3, maxHp: 15 });
-weapon('hunting_bow', 'ranger', 1, 45, { atk: 3, attackRange: 30 });
-weapon('gale_longbow', 'ranger', 2, 100, { atk: 7, attackRange: 50, attackSpeed: 10 });
-weapon('twin_daggers', 'assassin', 1, 45, { atk: 3, attackSpeed: 10 });
-weapon('venom_fang', 'assassin', 2, 100, { atk: 7, critChance: 8, attackSpeed: 10 });
-weapon('acolyte_staff', 'priest', 1, 45, { atk: 2, maxMp: 10, mpRegen: 0.5 });
-weapon('dawn_scepter', 'priest', 2, 100, { atk: 5, maxMp: 20, mpRegen: 1 });
-weapon('ember_wand', 'mage', 1, 45, { atk: 4, maxMp: 10 });
-weapon('astral_staff', 'mage', 2, 100, { atk: 9, maxMp: 20, cooldownReduction: 8 });
-weapon('hex_tome', 'warlock', 1, 45, { atk: 3, cooldownReduction: 5 });
-weapon('void_grimoire', 'warlock', 2, 100, { atk: 8, mpRegen: 1, cooldownReduction: 8 });
-weapon('worldsplitter', 'warrior', 3, 190, { atk: 15, critChance: 10, maxHp: 15 });
-weapon('aegis_of_dawn', 'knight', 3, 190, { atk: 10, def: 5, maxHp: 30 });
-weapon('starfall_bow', 'ranger', 3, 190, { atk: 12, attackRange: 70, attackSpeed: 15, critChance: 5 });
-weapon('nightshade_blades', 'assassin', 3, 190, { atk: 12, critChance: 14, attackSpeed: 15 });
-weapon('saints_reliquary', 'priest', 3, 190, { atk: 9, maxMp: 35, mpRegen: 1.5, cooldownReduction: 6 });
-weapon('cataclysm_rod', 'mage', 3, 190, { atk: 15, maxMp: 30, cooldownReduction: 12 });
-weapon('abyssal_codex', 'warlock', 3, 190, { atk: 13, maxMp: 15, mpRegen: 1.5, cooldownReduction: 12 });
+weapon('iron_greatsword', 1, 45, { atk: 4, critChance: 3 });
+weapon('bloodletter_axe', 2, 100, { atk: 9, critChance: 6 });
+weapon('guard_mace', 1, 45, { atk: 3, def: 1 });
+weapon('oathkeeper', 2, 100, { atk: 6, def: 3, maxHp: 15 });
+weapon('hunting_bow', 1, 45, { atk: 3, attackRange: 30 });
+weapon('gale_longbow', 2, 100, { atk: 7, attackRange: 50, attackSpeed: 10 });
+weapon('twin_daggers', 1, 45, { atk: 3, attackSpeed: 10 });
+weapon('venom_fang', 2, 100, { atk: 7, critChance: 8, attackSpeed: 10 });
+weapon('acolyte_staff', 1, 45, { atk: 2, maxMp: 10, mpRegen: 0.5 });
+weapon('dawn_scepter', 2, 100, { atk: 5, maxMp: 20, mpRegen: 1 });
+weapon('ember_wand', 1, 45, { atk: 4, maxMp: 10 });
+weapon('astral_staff', 2, 100, { atk: 9, maxMp: 20, cooldownReduction: 8 });
+weapon('hex_tome', 1, 45, { atk: 3, cooldownReduction: 5 });
+weapon('void_grimoire', 2, 100, { atk: 8, mpRegen: 1, cooldownReduction: 8 });
+weapon('worldsplitter', 3, 190, { atk: 15, critChance: 10, maxHp: 15 });
+weapon('aegis_of_dawn', 3, 190, { atk: 10, def: 5, maxHp: 30 });
+weapon('starfall_bow', 3, 190, { atk: 12, attackRange: 70, attackSpeed: 15, critChance: 5 });
+weapon('nightshade_blades', 3, 190, { atk: 12, critChance: 14, attackSpeed: 15 });
+weapon('saints_reliquary', 3, 190, { atk: 9, maxMp: 35, mpRegen: 1.5, cooldownReduction: 6 });
+weapon('cataclysm_rod', 3, 190, { atk: 15, maxMp: 30, cooldownReduction: 12 });
+weapon('abyssal_codex', 3, 190, { atk: 13, maxMp: 15, mpRegen: 1.5, cooldownReduction: 12 });
 
 // ── 防具：類型 × 部位，第 n 階數值為第 1 階的 n 倍 ──
 const ARMOR_BASE: Record<ArmorType, Record<'helmet' | 'chest' | 'legs' | 'boots', Partial<Stats>>> = {
@@ -119,8 +117,3 @@ export const RARITY = {
 export const MAX_TIER = 3;
 
 export const EQUIPMENT: Record<string, EquipmentDef> = Object.fromEntries(defs.map((d) => [d.id, d]));
-
-/** 職業是否能使用此裝備 */
-export function canEquip(def: EquipmentDef, classId: ClassId): boolean {
-  return !def.classes || def.classes.includes(classId);
-}

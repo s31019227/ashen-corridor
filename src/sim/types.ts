@@ -206,11 +206,13 @@ export interface World {
   /** 本格戰鬥時間（第一次造成傷害到清空為止，秒） */
   combatTime: number;
   /** 本格結束（Boss 擊倒或全滅）後倒數，到 0 時進入結算 */
-  ending: { victory: boolean; delay: number } | null;
+  /** 倒數結束後：nextFloor 進入下一層，否則結算 */
+  ending: { victory: boolean; delay: number; nextFloor?: boolean } | null;
 }
 
 /** 一次性事件：房主產生，隨快照送到每個玩家，用來顯示特效與訊息 */
 export type GameEvent =
+  | { k: 'floor'; floor: number }
   | { k: 'dmg'; x: number; y: number; v: number; crit?: boolean; onPlayer?: string }
   | { k: 'heal'; pid: string; hp: number; mp: number }
   | { k: 'gold'; x: number; y: number; v: number }
@@ -241,7 +243,9 @@ export type PlayerAction =
   | { k: 'carry'; potion: string }
   | { k: 'altar'; cellId: number }
   /** 傳送到已探索的格子（全隊一起） */
-  | { k: 'teleport'; cellId: number };
+  | { k: 'teleport'; cellId: number }
+  /** 選擇過層獎勵裝備（null = 跳過） */
+  | { k: 'reward'; item: string | null };
 
 /** 模擬時需要的全部狀態 */
 export interface Sim {

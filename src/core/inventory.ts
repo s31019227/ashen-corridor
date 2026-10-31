@@ -1,4 +1,4 @@
-import { EQUIPMENT, canEquip } from '../config/equipment';
+import { EQUIPMENT } from '../config/equipment';
 import { POTIONS } from '../config/potions';
 import { SHOP_CONFIG } from '../config/shop';
 import type { PlayerRun } from './runState';
@@ -8,7 +8,7 @@ export type ShopItem =
   | { kind: 'equipment'; id: string; price: number; nameKey: string }
   | { kind: 'potion'; id: string; potionId: PotionId; price: number; nameKey: string };
 
-export type BuyResult = 'ok' | 'noGold' | 'owned' | 'wrongClass' | 'unknown';
+export type BuyResult = 'ok' | 'noGold' | 'owned' | 'unknown';
 
 export function resolveShopItem(itemId: string): ShopItem | null {
   if (itemId.startsWith('potion:')) {
@@ -39,13 +39,11 @@ function putPotion(run: PlayerRun, potionId: PotionId) {
 
 /**
  * 購買：裝備直接裝上（替換舊裝備）；藥水購買後解鎖並立即攜帶。
- * 武器限定職業，不符合時無法購買。
  */
 export function buyItem(run: PlayerRun, itemId: string): BuyResult {
   const item = resolveShopItem(itemId);
   if (!item) return 'unknown';
   if (isOwned(run, item)) return 'owned';
-  if (item.kind === 'equipment' && !canEquip(EQUIPMENT[item.id], run.classId)) return 'wrongClass';
   if (run.gold < item.price) return 'noGold';
   if (item.kind === 'potion') {
     run.unlockedPotions.push(item.potionId);

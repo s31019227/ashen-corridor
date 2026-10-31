@@ -9,4 +9,5 @@ export const SCENES = {
   dialog: 'Dialog',
   settings: 'Settings',
   result: 'Result',
+  reward: 'Reward',
 } as const;

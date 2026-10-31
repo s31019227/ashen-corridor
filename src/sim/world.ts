@@ -5,9 +5,9 @@ import { MULTIPLAYER_CONFIG } from '../config/multiplayer';
 import { cooldown, cdTrigger } from '../core/cooldown';
 import { difficultyLevel, difficultyScale } from '../core/difficulty';
 import { Rng, randomSeed } from '../core/rng';
-import { rollGeneralStock } from '../core/shopStock';
+import { rollGeneralStock, rollRewardChoices } from '../core/shopStock';
 import type { RoomBounds } from '../core/roomTransition';
-import { playerStats, type PlayerRun, type RunState } from '../core/runState';
+import { advanceFloor, playerStats, type PlayerRun, type RunState } from '../core/runState';
 import { OPPOSITE_DIR, type Dir } from '../core/types';
 import { CLASSES } from '../config/classes';
 import type { EnemyEntity, PlayerEntity, Sim, World } from './types';
@@ -224,6 +224,24 @@ export function switchRoom(sim: Sim, roomId: number, fromDir: Dir | null) {
   const connected = new Set(Object.values(prev.players).filter((p) => p.connected).map((p) => p.id));
   sim.world = createWorld(sim.run, roomId, fromDir, connected, prev);
   sim.events.push({ k: 'room', roomId, fromDir });
+}
+
+/** 打倒非最後一層的 Boss：進入下一層，全員血魔回滿，每人拿到一組過層獎勵 */
+export function goNextFloor(sim: Sim) {
+  syncRunFromWorld(sim);
+  const prev = sim.world;
+  const rng = new Rng(randomSeed());
+  advanceFloor(sim.run, () => rollRewardChoices(rng));
+  for (const p of Object.values(sim.run.players)) {
+    const st = playerStats(p);
+    p.hp = st.maxHp;
+    p.mp = st.maxMp;
+  }
+  // 倒地的人在新的一層直接以滿血出現，不走換格復活的比例
+  for (const e of Object.values(prev.players)) e.dead = false;
+  const connected = new Set(Object.values(prev.players).filter((p) => p.connected).map((p) => p.id));
+  sim.world = createWorld(sim.run, sim.run.map.startId, null, connected, prev);
+  sim.events.push({ k: 'floor', floor: sim.run.floor });
 }
 
 /** 能不能傳送到某格：目標已探索、不是目前這格，且目前這格沒有怪物 */
